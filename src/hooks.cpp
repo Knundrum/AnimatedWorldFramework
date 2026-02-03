@@ -16,7 +16,6 @@ namespace HookLineAndSinker
 	};
 
 	RE::TESObjectREFR* g_CrosshairRef = nullptr;
-	bool IgnoreIdleStop = false;
 	bool CloseEnoughVar = false;
 
 	typedef bool(ActivatePickRefSig)(RE::PlayerCharacter* a_manager);
@@ -40,11 +39,8 @@ namespace HookLineAndSinker
 
 			using func_t = bool (*)(RE::Actor*, RE::BGSAction*, RE::TESObjectREFR*, void*, std::uint32_t);
 
-			// 3. Use the REL::ID you found
 			REL::Relocation<func_t> func{ REL::ID(1451490) };
 
-			// 4. Call the function
-			// Arguments: Performer, Action, Target Object, VM (null), CallbackID (0)
 			bool success = func(player, action, g_CrosshairRef, nullptr, 0);
 			if (success) {
 				logger::warn("Anim should have been played on {}", name);
@@ -77,7 +73,6 @@ namespace HookLineAndSinker
 		REL::Relocation<ActivatePickRefSig> ActivatePickRefLoc{ REL::ID(547089) };
 
 		if (hookActivatePickRef.Create(reinterpret_cast<LPVOID>(ActivatePickRefLoc.address()), &HookedActivatePickRef)) {
-			// We cast the trampoline address back to our signature type
 			OriginalActivatePickRef = reinterpret_cast<std::uintptr_t>(hookActivatePickRef.GetTrampoline());
 			logger::warn("Successfully hooked ActivatePickRef");
 		} else {
@@ -87,7 +82,6 @@ namespace HookLineAndSinker
 		REL::Relocation<CloseEnoughSig> CloseEnoughLoc{ REL::ID(666830) };
 
 		if (hookCloseEnough.Create(reinterpret_cast<LPVOID>(CloseEnoughLoc.address()), &HookedCloseEnough)) {
-			// We cast the trampoline address back to our signature type
 			OriginalCloseEnough = reinterpret_cast<std::uintptr_t>(hookCloseEnough.GetTrampoline());
 			logger::warn("Successfully hooked CloseEnough");
 		} else {
@@ -98,4 +92,5 @@ namespace HookLineAndSinker
 
 
 }
+
 
