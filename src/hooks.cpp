@@ -20,35 +20,13 @@ namespace HookLineAndSinker
 	bool CloseEnoughVar = false;
 
 	typedef bool(ActivatePickRefSig)(RE::PlayerCharacter* a_manager);
-	typedef bool (*IdleStopSig)(void* a_this, RE::BSFixedString const& a_eventName, float& a_outValue);
 	typedef bool (*CloseEnoughSig)(RE::PlayerCharacter* a_manager, RE::TESObjectREFR* a_target);
-	typedef bool (*EquipItemSig)(RE::ActorEquipManager* a_manager, RE::Actor* a_actor, RE::BGSObjectInstanceT<RE::TESBoundObject> a_obj, ObjectEquipParams& a_params);
 
 	REL::Relocation<ActivatePickRefSig> OriginalActivatePickRef;
-	REL::Relocation<IdleStopSig> OriginalIdleStop;
 	REL::Relocation<CloseEnoughSig> OriginalCloseEnough;
-	REL::Relocation<EquipItemSig> OriginalEquipItem;
 
 	DetourXS hookActivatePickRef;
-	DetourXS hookIdleStop;
 	DetourXS hookCloseEnough;
-	DetourXS hookEquipItem;
-
-	bool HookedIdleStop(void* a_manager, RE::BSFixedString const& a_eventName, float& a_outValue)
-	{
-		//auto player = RE::PlayerCharacter::GetSingleton();
-		logger::warn("Hooked IdleStop");
-
-		//if (g_CrosshairRef && a_actor == player) {
-		if (IgnoreIdleStop == true && a_eventName == "IdleStop") {
-			logger::warn("Should have stopped the idlestop");
-			a_outValue = 999999.0f;  // Set a massive time-to-stop
-			return true;             // Pretend we found the data successfully
-		} else {
-			return OriginalIdleStop(a_manager,a_eventName,a_outValue);
-		}
-
-	}
 
 	void HookedActivatePickRef(RE::PlayerCharacter* a_manager)
 	{
@@ -91,25 +69,10 @@ namespace HookLineAndSinker
 		return result;
 	}
 
-	bool HookedEquipItem(RE::ActorEquipManager* a_manager, RE::Actor* a_actor, RE::BGSObjectInstanceT<RE::TESBoundObject> a_obj, ObjectEquipParams& a_params)
-	{
-	}
-
 
 
 	void RegisterHook()
 	{
-		/*
-		REL::Relocation<IdleStopSig> IdleStopLoc{ REL::ID(1115403) };
-
-		if (hookIdleStop.Create(reinterpret_cast<LPVOID>(IdleStopLoc.address()), &HookedIdleStop)) {
-			// We cast the trampoline address back to our signature type
-			OriginalIdleStop = reinterpret_cast<std::uintptr_t>(hookIdleStop.GetTrampoline());
-			logger::warn("Successfully hooked IdleStop");
-		} else {
-			logger::warn("Failed to create IdleStop hook");
-		}
-		*/
 
 		REL::Relocation<ActivatePickRefSig> ActivatePickRefLoc{ REL::ID(547089) };
 
@@ -131,16 +94,8 @@ namespace HookLineAndSinker
 			logger::warn("Failed to create CloseEnough hook");
 		}
 
-		REL::Relocation<EquipItemSig> EquipItemLoc{ REL::ID(1474878) };
-
-		if (hookEquipItem.Create(reinterpret_cast<LPVOID>(EquipItemLoc.address()), &HookedEquipItem)) {
-			// We cast the trampoline address back to our signature type
-			OriginalEquipItem = reinterpret_cast<std::uintptr_t>(hookEquipItem.GetTrampoline());
-			logger::warn("Successfully hooked EquipItem");
-		} else {
-			logger::warn("Failed to create EquipItem hook");
-		}
 	}
 
 
 }
+
