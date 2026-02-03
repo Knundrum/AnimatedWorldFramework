@@ -44,7 +44,6 @@ namespace HookLineAndSinker
 			bool success = func(player, action, g_CrosshairRef, nullptr, 0);
 			if (success) {
 				logger::warn("Anim should have been played on {}", name);
-				IgnoreIdleStop = true;
 			}
 		}
 
@@ -92,5 +91,6 @@ namespace HookLineAndSinker
 
 
 }
+
 
 
