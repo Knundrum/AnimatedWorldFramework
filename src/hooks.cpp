@@ -296,6 +296,10 @@ namespace HookLineAndSinker
 		RunActorUpdatesOrig(a_this);
 
 		auto player = RE::PlayerCharacter::GetSingleton();
+		if (!player)
+			return;
+		if (!player->GetFullyLoaded3D())
+			return;
 		if (player && player->currentProcess && player->currentProcess->middleHigh) {
 			if (!OriginalPlayerProcessEvent)
 				InstallVTableHook();
