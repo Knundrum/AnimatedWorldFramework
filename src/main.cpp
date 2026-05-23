@@ -31,8 +31,8 @@ extern "C" DLLEXPORT bool F4SEAPI F4SEPlugin_Query(const F4SE::QueryInterface* a
 	logger::info(FMT_STRING("{} v{}"), Version::PROJECT, Version::NAME);
 
 	a_info->infoVersion = F4SE::PluginInfo::kVersion;
-	a_info->name = "TestProject";
-	a_info->version = 69;
+	a_info->name = "AnimatedWorld";
+	a_info->version = 25;
 
 	if (a_f4se->IsEditor()) {
 		logger::critical("loaded in editor");
@@ -45,6 +45,8 @@ extern "C" DLLEXPORT bool F4SEAPI F4SEPlugin_Query(const F4SE::QueryInterface* a
 		return false;
 	}
 
+	F4SE::AllocTrampoline(384);
+
 	return true;
 }
 
@@ -53,11 +55,13 @@ extern "C" DLLEXPORT bool F4SEAPI F4SEPlugin_Load(const F4SE::LoadInterface* a_f
 	F4SE::Init(a_f4se);
 
 	HookLineAndSinker::RegisterHook();
+	
 
 	const F4SE::MessagingInterface* messageInterface = F4SE::GetMessagingInterface();
 	messageInterface->RegisterListener([](F4SE::MessagingInterface::Message* msg) -> void {
 		if (msg->type == F4SE::MessagingInterface::kGameDataReady) {
 			playerRef = RE::PlayerCharacter::GetSingleton();
+			//HookLineAndSinker::InstallVTableHook();
 		}
 	});
 
