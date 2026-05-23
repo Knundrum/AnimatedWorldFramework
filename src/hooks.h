@@ -4,7 +4,9 @@ extern RE::PlayerCharacter* playerRef;
 
 namespace HookLineAndSinker
 {
-	bool HookedActorCheckValidTarget(RE::AIProcess**, RE::TESObjectREFR*);
 
 	void RegisterHook();
+	void InstallVTableHook();
+	void EnsureTargetExists();
+
 }
