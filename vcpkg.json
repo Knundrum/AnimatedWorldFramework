@@ -1,0 +1,14 @@
+{
+  "name": "animatedworld",
+  "version-string": "1.0.0",
+  "description": "Fallout 4 mod that plays animations when interacting with things, built on CommonLibF4RD",
+  "homepage": "https://github.com/Zzyxz/CommonLibF4RD",
+  "license": "MIT",
+  "dependencies": [
+    "boost-stl-interfaces",
+    "fmt",
+    "rsm-mmio",
+    "spdlog",
+    "zydis"
+  ]
+}

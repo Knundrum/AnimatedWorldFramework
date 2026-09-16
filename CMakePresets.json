@@ -1,0 +1,109 @@
+{
+  "version": 2,
+  "configurePresets": [
+    {
+      "name": "cmake-dev",
+      "hidden": true,
+      "binaryDir": "${sourceDir}/build",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": {
+          "type": "STRING",
+          "value": "Debug"
+        }
+      },
+      "errors": {
+        "deprecated": true
+      },
+      "warnings": {
+        "deprecated": true,
+        "dev": true
+      }
+    },
+    {
+      "name": "vcpkg",
+      "hidden": true,
+      "cacheVariables": {
+        "CMAKE_TOOLCHAIN_FILE": {
+          "type": "STRING",
+          "value": "$env{VCPKG_ROOT}/scripts/buildsystems/vcpkg.cmake"
+        }
+      }
+    },
+    {
+      "name": "windows",
+      "hidden": true,
+      "cacheVariables": {
+        "Boost_USE_STATIC_LIBS": {
+          "type": "BOOL",
+          "value": "ON"
+        },
+        "CMAKE_MSVC_RUNTIME_LIBRARY": {
+          "type": "STRING",
+          "value": "MultiThreaded$<$<CONFIG:Debug>:Debug>DLL"
+        },
+        "VCPKG_TARGET_TRIPLET": {
+          "type": "STRING",
+          "value": "x64-windows-static-md"
+        }
+      }
+    },
+    {
+      "name": "vs2022-windows-vcpkg",
+      "displayName": "VS2022 x64 (v143) - the only supported toolset",
+      "description": "CommonLibF4RD requires the v143 toolset. Visual Studio 2019 ships v142 and cannot build it.",
+      "generator": "Visual Studio 17 2022",
+      "architecture": "x64",
+      "toolset": "v143",
+      "binaryDir": "${sourceDir}/build/vs2022",
+      "inherits": [
+        "cmake-dev",
+        "vcpkg",
+        "windows"
+      ],
+      "cacheVariables": {
+        "CMAKE_CXX_FLAGS": "/EHsc /MP"
+      }
+    },
+    {
+      "name": "ninja-windows-vcpkg",
+      "displayName": "Ninja x64 (v143) - needs a VS2022 developer prompt",
+      "description": "Same toolset, faster iteration. Run from a VS2022 x64 Native Tools prompt so cl.exe is v143.",
+      "generator": "Ninja Multi-Config",
+      "binaryDir": "${sourceDir}/build/ninja",
+      "inherits": [
+        "cmake-dev",
+        "vcpkg",
+        "windows"
+      ],
+      "cacheVariables": {
+        "CMAKE_CXX_FLAGS": "/EHsc /MP"
+      }
+    }
+  ],
+  "buildPresets": [
+    {
+      "name": "vs2022-debug",
+      "configurePreset": "vs2022-windows-vcpkg",
+      "configuration": "Debug",
+      "jobs": 0
+    },
+    {
+      "name": "vs2022-release",
+      "configurePreset": "vs2022-windows-vcpkg",
+      "configuration": "Release",
+      "jobs": 0
+    },
+    {
+      "name": "ninja-debug",
+      "configurePreset": "ninja-windows-vcpkg",
+      "configuration": "Debug",
+      "jobs": 0
+    },
+    {
+      "name": "ninja-release",
+      "configurePreset": "ninja-windows-vcpkg",
+      "configuration": "Release",
+      "jobs": 0
+    }
+  ]
+}
