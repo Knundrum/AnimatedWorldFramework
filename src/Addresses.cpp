@@ -108,7 +108,7 @@ namespace AW::Addresses
 			const auto calls = REL::resolve_callsites(
 				IsolateForRuntime(site.owner),
 				IsolateForRuntime(site.callsiteTarget),
-				REL::AutoCallsiteBranch::kCall);
+				site.branch);
 
 			if (calls && calls.rvas.size() == 1) {
 				logger::info(
