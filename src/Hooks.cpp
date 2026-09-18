@@ -122,15 +122,8 @@ namespace AW::Hooks
 		using FnUseObject = bool(__fastcall*)(
 			RE::ActorEquipManager*,
 			RE::Actor*,
-			const RE::BGSObjectInstance&,
-			std::uint32_t,
-			std::uint32_t,
-			const RE::BGSEquipSlot*,
-			bool,
-			bool,
-			bool,
-			bool,
-			bool);
+			const RE::BGSObjectInstance*,
+			RE::ObjectEquipParams*);
 		using FnSetInputDeviceLightState = void(__fastcall*)(RE::BSInputDeviceManager*, std::uint32_t, bool);
 		using FnProcessGraphEvent = RE::BSEventNotifyControl(__fastcall*)(
 			RE::BSTEventSink<RE::BSAnimationGraphEvent>*,
@@ -594,24 +587,15 @@ namespace AW::Hooks
 		bool __fastcall HookedUseObject(
 			RE::ActorEquipManager* a_this,
 			RE::Actor* a_actor,
-			const RE::BGSObjectInstance& a_object,
-			std::uint32_t a_stackID,
-			std::uint32_t a_number,
-			const RE::BGSEquipSlot* a_slot,
-			bool a_queueEquip,
-			bool a_forceEquip,
-			bool a_playSounds,
-			bool a_applyNow,
-			bool a_locked)
+			const RE::BGSObjectInstance* a_object,
+			RE::ObjectEquipParams* a_params)
 		{
 			const auto callOriginal = [&] {
-				return g_origUseObject(
-					a_this, a_actor, a_object, a_stackID, a_number, a_slot,
-					a_queueEquip, a_forceEquip, a_playSounds, a_applyNow, a_locked);
+				return g_origUseObject(a_this, a_actor, a_object, a_params);
 			};
 
 			auto* player = RE::PlayerCharacter::GetSingleton();
-			auto* baseForm = static_cast<RE::TESBoundObject*>(a_object.object);
+			auto* baseForm = a_object ? static_cast<RE::TESBoundObject*>(a_object->object) : nullptr;
 
 			if (!a_actor || !player || !baseForm || !a_actor->GetFullyLoaded3D()) {
 				return callOriginal();
