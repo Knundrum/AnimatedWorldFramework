@@ -22,21 +22,11 @@ namespace AW::Addresses
 			}
 		}
 
-		// The id actually used on this runtime, for logging.
 		[[nodiscard]] std::uint64_t IDForRuntime(const REL::ID& a_id) noexcept
 		{
 			return a_id.id();
 		}
 
-		// Strips every id except the running family's.
-		//
-		// IDDatabase::resolve() on OG tries ae_id() as a runtime pattern FIRST
-		// and only falls back to the OG legacy table if that misses.  So a real
-		// AE id sitting in the AE slot can pattern-match somewhere inside the OG
-		// executable and win, and the hook is then written into an unrelated
-		// function with no error reported.  Handing resolve() an ID that carries
-		// only the current family's number removes that whole failure mode: on
-		// OG the empty AE slot cannot match, so the legacy table always decides.
 		[[nodiscard]] REL::ID IsolateForRuntime(const REL::ID& a_id) noexcept
 		{
 			switch (CurrentFamily()) {
@@ -101,9 +91,6 @@ namespace AW::Addresses
 			return std::nullopt;
 		}
 
-		// Preferred: let CommonLibF4RD find the call itself.  Survives a shifted
-		// function body or inserted instructions, and fails loudly rather than
-		// guessing when the call is gone or ambiguous.
 		if (HasIDForRuntime(site.callsiteTarget)) {
 			const auto calls = REL::resolve_callsites(
 				IsolateForRuntime(site.owner),

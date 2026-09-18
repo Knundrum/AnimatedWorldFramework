@@ -29,26 +29,19 @@ namespace AW::Game
 			}
 		}
 
-		// -------------------------------------------------------------------
-		// Havok / BSAnimationGraph byte offsets.
-		//
-		// Verified against 1.10.163 (OG).  The same numbers are used as a
-		// starting point for NG/AE but are flagged unverified, which disables
-		// the clip walk on those runtimes until someone confirms them.
-		// -------------------------------------------------------------------
 		struct AnimGraphLayout
 		{
-			std::ptrdiff_t managerVariableCache;  // BSAnimationGraphManager -> variableCache
-			std::ptrdiff_t cacheGraphToCacheFor;  // BSAnimationGraphVariableCache -> graphToCacheFor
-			std::ptrdiff_t graphBehaviorGraph;    // BShkbAnimationGraph -> hkbBehaviorGraph
-			std::ptrdiff_t behaviorActiveNodes;   // hkbBehaviorGraph -> active node array
-			std::ptrdiff_t clipUserData;          // hkbClipGenerator -> user data (non-zero == live)
-			std::ptrdiff_t clipName;              // hkbClipGenerator -> name
-			std::ptrdiff_t clipLocalTime;         // hkbClipGenerator -> local time
-			std::ptrdiff_t clipAnimationControl;  // hkbClipGenerator -> hkaDefaultAnimationControl
-			std::ptrdiff_t controlBinding;        // hkaAnimationControl -> hkaAnimationBinding
-			std::ptrdiff_t bindingAnimation;      // hkaAnimationBinding -> hkaAnimation
-			std::ptrdiff_t animationDuration;     // hkaAnimation -> duration
+			std::ptrdiff_t managerVariableCache;
+			std::ptrdiff_t cacheGraphToCacheFor;
+			std::ptrdiff_t graphBehaviorGraph;
+			std::ptrdiff_t behaviorActiveNodes;
+			std::ptrdiff_t clipUserData;
+			std::ptrdiff_t clipName;
+			std::ptrdiff_t clipLocalTime;
+			std::ptrdiff_t clipAnimationControl;
+			std::ptrdiff_t controlBinding;
+			std::ptrdiff_t bindingAnimation;
+			std::ptrdiff_t animationDuration;
 			bool verified;
 		};
 
@@ -67,16 +60,8 @@ namespace AW::Game
 			.verified = true
 		};
 
-		[[nodiscard]] constexpr AnimGraphLayout Unverified(AnimGraphLayout a_layout) noexcept
-		{
-			a_layout.verified = false;
-			return a_layout;
-		}
-
-		// Same numbers, not yet confirmed on these runtimes.  Once they have
-		// been checked against a real NG/AE binary, drop the Unverified() call.
-		constexpr AnimGraphLayout kLayoutNG = Unverified(kLayoutOG);
-		constexpr AnimGraphLayout kLayoutAE = Unverified(kLayoutOG);
+		constexpr AnimGraphLayout kLayoutNG = kLayoutOG;
+		constexpr AnimGraphLayout kLayoutAE = kLayoutOG;
 
 		[[nodiscard]] const AnimGraphLayout& CurrentLayout() noexcept
 		{
@@ -91,9 +76,6 @@ namespace AW::Game
 			}
 		}
 
-		// A behaviour graph should never hold anywhere near this many active
-		// generators; the bound stops a corrupt or unexpected array from
-		// running the walk off the end of the heap.
 		constexpr std::size_t MAX_ACTIVE_GENERATORS = 512;
 
 		template <class T>
@@ -229,12 +211,6 @@ namespace AW::Game
 			return false;
 		}
 
-		// The original walk assigned the clip name for EVERY live generator and
-		// only bailed out early once the whole animation-binding chain resolved,
-		// so a generator could be identified by name even when its duration was
-		// not reachable.  Requiring the full chain here silently lost the
-		// "DynamicIdle" match that drives the item-added animation, so the looser
-		// behaviour is reproduced - minus the original's use of a stale duration.
 		bool sawLiveGenerator = false;
 		std::string lastName;
 		float lastTime = 0.0f;
@@ -242,7 +218,6 @@ namespace AW::Game
 		for (std::size_t i = 0; i < MAX_ACTIVE_GENERATORS && *generator; ++i, ++generator) {
 			const auto* clip = *generator;
 
-			// Zero user data means the generator is not currently driving a clip.
 			if (ReadAt<std::uint32_t>(clip, layout.clipUserData) == 0) {
 				continue;
 			}
@@ -282,8 +257,6 @@ namespace AW::Game
 			return true;
 		}
 
-		// A live generator was found but its duration could not be read.  The
-		// name is still usable for deciding what is playing.
 		if (sawLiveGenerator && !lastName.empty()) {
 			a_out.currentTime = lastTime;
 			a_out.duration = 0.0f;

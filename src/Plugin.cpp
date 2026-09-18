@@ -32,15 +32,8 @@ namespace
 			data.name[i] = Version::PROJECT[i];
 		}
 
-		// Addresses come from CommonLibF4RD's runtime database, not from a
-		// fixed executable layout, so a new patch number on its own is not a
-		// reason for F4SE to reject the plugin.
 		data.addressIndependence = F4SE::PluginVersionData::kAddressIndependence_Signatures;
 
-		// Class layouts are a separate concern from address resolution.  These
-		// are advertised so the plugin can load on NG/AE and print its address
-		// report; anything that actually depends on an unverified layout
-		// (see Game::CanReadClipInfo) disables itself at runtime.
 		data.structureIndependence =
 			F4SE::PluginVersionData::kStructureIndependence_1_10_980Layout |
 			F4SE::PluginVersionData::kStructureIndependence_1_11_137Layout;
@@ -98,9 +91,6 @@ bool AW::Plugin::Initialize(const F4SE::LoadInterface* a_f4se)
 		Version::NAME,
 		a_f4se->RuntimeVersion().string());
 
-	// Deliberately no executable-version whitelist.  A runtime this plugin has
-	// never seen is allowed to reach the runtime database and try; whether it
-	// can work is decided by whether the required addresses resolve.
 	Addresses::LogCapabilityReport();
 
 	if (!Game::Initialize()) {
@@ -110,8 +100,6 @@ bool AW::Plugin::Initialize(const F4SE::LoadInterface* a_f4se)
 
 	F4SE::AllocTrampoline(384);
 
-	// Must happen before any hook is installed, or it decodes our trampolines
-	// instead of the game's original branches.
 	if (Diagnostics::CallsiteDumpRequested()) {
 		Diagnostics::DumpCallsiteTargets();
 	}

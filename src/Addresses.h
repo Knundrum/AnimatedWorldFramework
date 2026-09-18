@@ -1,78 +1,20 @@
 #pragma once
 
-// ---------------------------------------------------------------------------
-// Every address this plugin depends on lives in this file.
-//
-// CommonLibF4RD's REL::ID takes ids in the order (OG, NG, AE):
-//
-//     REL::ID{ ae }            one portable AE id, bridged to OG/NG if possible
-//     REL::ID{ og, ae }        NG shares the AE id
-//     REL::ID{ og, ng, ae }    all three explicit
-//
-// OG and AE use INDEPENDENT numeric id spaces.  There is no OG -> AE bridge:
-// IDDatabase::resolve() consults ae_id() and nothing else when the game is AE.
-// Putting an OG number in the AE slot therefore does not fail - it resolves to
-// whatever unrelated function owns that number on AE, and the hook lands in the
-// middle of it.  So an id that is not known for a runtime family is left as
-// UNKNOWN_ID and the owning feature is simply not installed on that runtime.
-//
-// TO ADD AE/NG SUPPORT: replace an UNKNOWN_ID with the real id and, for hook
-// sites, the matching interior offset.  Nothing else needs to change; the
-// capability report at startup will pick it up.  Better still, give the site a
-// `callsiteTarget` (the id of the function being called at that site) and
-// CommonLibF4RD will discover the offset itself via REL::AUTO_CALLSITE.
-// ---------------------------------------------------------------------------
-
 namespace AW::Addresses
 {
-	// An id that has not been determined for a runtime family yet.
 	inline constexpr std::uint64_t UNKNOWN_ID = REL::ID::INVALID_ID;
 
-	// An interior hook offset that has not been determined yet.
 	inline constexpr std::ptrdiff_t UNKNOWN_OFFSET = (std::numeric_limits<std::ptrdiff_t>::min)();
 
-	// -----------------------------------------------------------------------
-	// Functions the plugin calls directly.
-	// -----------------------------------------------------------------------
-
-	// bool Actor::PerformAction(BGSAction*, TESObjectREFR*)
 	inline constexpr REL::ID PlayAction{ 1057231, 2231177, 2231177 };
 
-	// void ApplySwap(NiAVObject*, BGSMaterialSwap const*, float, float, void*)
-	// ID 2189271 has the matching 123-byte implementation shape on NG (RVA
-	// 0x201670) and AE (RVA 0x256060), matching OG RVA 0x531B0.
 	inline constexpr REL::ID ApplyMaterialSwap{ 708895, 2189271, 2189271 };
 
-	// bool TESObjectREFR::IsActivationBlocked(TESObjectREFR*)
 	inline constexpr REL::ID IsActivationBlocked{ 407609, 2201146, 2201146 };
 
-	// bool TESObjectREFR::WornHasKeyword(TESObjectREFR*, BGSKeyword*)
-	// Present in the old in-tree CommonLibF4 fork, absent from CommonLibF4RD.
-	//
-	// AE id from commonlib_NonVR PR #88 (2026-09-17), which names AE 2200995 as
-	// TESObjectREFR::WornHasKeyword at RVA 0x507940 on 1.11.240, from Ghidra and
-	// Address Library evidence.  STATIC PROOF ONLY - that PR states explicitly
-	// that no live runtime result is claimed, and its own pre-merge gate (a probe
-	// on real 1.10.163 / 1.10.984 / 1.11.240 sessions) has not been run.  Verify
-	// the RVA against a real AE session before trusting it.  Inert on OG.
 	inline constexpr REL::ID WornHasKeyword{ 900857, 2200995, 2200995 };
 
-	// void PipboyManager::PlayPipboyOpenAnim(PipboyManager*, const BSFixedString&)
-	// Present in the old in-tree CommonLibF4 fork, absent from CommonLibF4RD.
 	inline constexpr REL::ID PlayPipboyOpenAnim{ 663900, 2225444, 2225444 };
-
-	// -----------------------------------------------------------------------
-	// Hook sites.
-	//
-	// `owner` is the function that CONTAINS the call being replaced; the
-	// offsets are relative to the start of that function.  Runtime slots are
-	// explicit: an unverified family remains UNKNOWN_ID/UNKNOWN_OFFSET.
-	// -----------------------------------------------------------------------
-
-	// -----------------------------------------------------------------------
-	// ProcessLists::RunActorUpdates is a different function from the owner of
-	// this hook.  Do not put its id in the owner slot.
-	// -----------------------------------------------------------------------
 
 	enum class Site : std::size_t
 	{
@@ -90,49 +32,29 @@ namespace AW::Addresses
 	{
 		std::string_view name;
 
-		// Function containing the call to replace.
 		REL::ID owner;
 
-		// Interior offsets, one per runtime family.
 		std::ptrdiff_t ogOffset;
 		std::ptrdiff_t ngOffset;
 		std::ptrdiff_t aeOffset;
 
-		// Optional: the id of the function called at this site.  When set and
-		// resolvable, REL::resolve_callsites finds the offset itself and the
-		// fixed offsets above are only a fallback.  This is the update-resilient
-		// form recommended by CommonLibF4RD and is worth filling in even for OG.
 		REL::ID callsiteTarget{};
 
-		// How the site branches to that target.  Confirmed per site by the
-		// AnimatedWorld.findcallsites dump: five are E8 calls, the Pip-Boy light
-		// site is an E9 jmp (a tail call).  resolve_callsites will not match a
-		// jmp while looking for a call, so this must be right or the automatic
-		// lookup silently falls back to the fixed offset.
 		REL::AutoCallsiteBranch branch{ REL::AutoCallsiteBranch::kCall };
 
-		// True when this site must exist for the plugin to be worth loading.
 		bool required{ false };
 	};
 
 	inline constexpr std::array<HookSite, static_cast<std::size_t>(Site::kTotal)> kHookSites{ {
-		// Per-frame actor update driver.  Everything time-based hangs off this
-		// one, so without it the plugin does nothing at all.
-		// Owner 556439 is unnamed in CommonLibF4RD; the site's callee has the
-		// signature void(void*).  The site NAME here describes the callee, not
-		// the owner - true of every entry in this table.
 		HookSite{
 			.name = "RunActorUpdates"sv,
 			.owner = REL::ID{ 556439, 2227608, 2227608 },
 			.ogOffset = 0xF0,
 			.ngOffset = 0xF0,
 			.aeOffset = 0xF0,
-			// Callee is Main::OnIdle_UpdatePlayer: OG 1318162, AE 2228929.
 			.callsiteTarget = REL::ID{ 1318162, 2228929, 2228929 },
 			.required = true },
 
-		// PlayerCharacter item-acquired event.
-		// Callee on OG is id 876119 (rva 0xe9f220), unnamed in CommonLibF4RD.
 		HookSite{
 			.name = "AddAcquiredEvent"sv,
 			.owner = REL::ID{ 1401485, 2221653, 2221653 },
@@ -141,15 +63,6 @@ namespace AW::Addresses
 			.aeOffset = 0x354,
 			.callsiteTarget = REL::ID{ 876119, 2232930, 2232930 } },
 
-		// Owner 785533 is unnamed in CommonLibF4RD.  The verified callsite is
-		// +0x38A on OG and +0x31D on NG/AE.  The callee is OG id 753531, which CommonLibF4RD
-		// names TESObjectREFR::ActivateRef with AE id 2201147 - so this site has
-		// a complete callsite target and no longer needs an interior offset on
-		// any runtime.  The ogOffset stays as the fallback.
-		//
-		// This is the only site where automatic resolution is live.  If activate
-		// animations break, delete the callsiteTarget line: the log says which
-		// path was taken ("callsite discovered automatically" vs the warning).
 		HookSite{
 			.name = "ActivateRef"sv,
 			.owner = REL::ID{ 785533, 2233039, 2233039 },
@@ -158,11 +71,6 @@ namespace AW::Addresses
 			.aeOffset = 0x31D,
 			.callsiteTarget = REL::ID{ 753531, 2201147, 2201147 } },
 
-		// Owner is TESObjectREFR::AddInventoryItem, OG id 78185 and NG/AE id 2200949
-		// in CommonLibF4RD.  We replace a call inside it at +0xA40 on OG and +0xA4A
-		// on NG/AE.
-		// Callee is HandlePlayerItemAdded: OG id 357079 (RVA 0xae1160),
-		// NG/AE id 2194003 (NG RVA 0x2f30d0, AE RVA 0x3477c0).
 		HookSite{
 			.name = "HandlePlayerItem"sv,
 			.owner = REL::ID{ 78185, 2200949, 2200949 },
@@ -171,12 +79,6 @@ namespace AW::Addresses
 			.aeOffset = 0xA4A,
 			.callsiteTarget = REL::ID{ 357079, 2194003, 2194003 } },
 
-		// OG EquipObject calls UseObject at +0x15A.  On NG/AE, EquipObject +0xE0
-		// calls GetDesiredEquipSlot instead; the real UseObject entry is not a
-		// direct callsite in either image.  NG/AE therefore use the verified
-		// UseObject entry hook in Hooks.cpp.
-		// UseObject is OG id 301794 (RVA 0xe1d100), with NG/AE id 2231408
-		// (NG RVA 0xc61490, AE RVA 0xce7460); unnamed in CommonLibF4RD.
 		HookSite{
 			.name = "UseObject"sv,
 			.owner = REL::ID{ 988029, 2231392, 2231392 },
@@ -185,10 +87,6 @@ namespace AW::Addresses
 			.aeOffset = UNKNOWN_OFFSET,
 			.callsiteTarget = REL::ID{ 301794, 2231408, 2231408 } },
 
-		// Owner is PlayerCharacter::TogglePipBoyLight, OG id 520007 and AE id 2233201
-		// in CommonLibF4RD.  The findcallsites dump shows the site is an E9 JMP
-		// (a tail call), not a call - hence the kJump branch kind below.
-		// Callee on OG is id 157452 (rva 0x1b2c080), unnamed in CommonLibF4RD.
 		HookSite{
 			.name = "SetInputDeviceLightState"sv,
 			.owner = REL::ID{ 520007, 2233201, 2233201 },
@@ -204,25 +102,14 @@ namespace AW::Addresses
 		return kHookSites[static_cast<std::size_t>(a_site)];
 	}
 
-	// -----------------------------------------------------------------------
-	// Resolution.  None of these ever call stl::report_and_fail: an id that
-	// cannot be resolved yields std::nullopt and the caller declines the
-	// feature.  REL::Relocation's constructor is deliberately not used for
-	// anything optional, because it terminates the process on failure.
-	// -----------------------------------------------------------------------
-
-	// True when a_id carries an id for the family the game is actually running.
 	[[nodiscard]] bool HasIDForRuntime(const REL::ID& a_id) noexcept;
 
-	// Absolute address of a function, or nullopt with a logged reason.
 	[[nodiscard]] std::optional<std::uintptr_t> ResolveFunction(
 		std::string_view a_name,
 		const REL::ID& a_id);
 
-	// Absolute address of a hook site, or nullopt with a logged reason.
 	[[nodiscard]] std::optional<std::uintptr_t> ResolveSite(Site a_site);
 
-	// One block in the log naming every id, whether it resolved, and why not.
 	void LogCapabilityReport();
 
 	[[nodiscard]] std::string_view RuntimeFamilyName() noexcept;
