@@ -699,6 +699,23 @@ namespace AW::Hooks
 			logger::info("installed {} hook", Addresses::GetSite(a_site).name);
 			return true;
 		}
+
+		template <class F>
+		[[nodiscard]] bool InstallFunction(
+			std::string_view a_name,
+			const REL::ID& a_id,
+			F& a_original,
+			F a_hook)
+		{
+			const auto address = Addresses::ResolveFunction(a_name, a_id);
+			if (!address) {
+				return false;
+			}
+
+			a_original = reinterpret_cast<F>(F4SE::GetTrampoline().write_branch<5>(*address, a_hook));
+			logger::info("installed {} entry hook", a_name);
+			return true;
+		}
 	}
 
 	bool Install()
@@ -721,8 +738,14 @@ namespace AW::Hooks
 		static_cast<void>(InstallCall(
 			Addresses::Site::kHandlePlayerItem, g_origHandlePlayerItem, &HookedHandlePlayerItem));
 
-		static_cast<void>(InstallCall(
-			Addresses::Site::kUseObject, g_origUseObject, &HookedUseObject));
+		const auto& useObjectSite = Addresses::GetSite(Addresses::Site::kUseObject);
+		if (REL::runtime_family(REL::Module::get().version()) == REL::RuntimeFamily::kOG) {
+			static_cast<void>(InstallCall(
+				Addresses::Site::kUseObject, g_origUseObject, &HookedUseObject));
+		} else {
+			static_cast<void>(InstallFunction(
+				"UseObject"sv, useObjectSite.callsiteTarget, g_origUseObject, &HookedUseObject));
+		}
 
 		// Activation needs the blocked-ref test; without it the hook would fire
 		// the animation on references the game refuses to activate.
