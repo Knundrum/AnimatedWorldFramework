@@ -26,6 +26,9 @@ namespace AW::Game
 		{
 			if (const auto address = Addresses::ResolveFunction(a_name, a_id)) {
 				a_out = reinterpret_cast<F>(*address);
+				logger::debug("bound {} at {:#x}", a_name, *address);
+			} else {
+				logger::debug("binding unavailable: {}", a_name);
 			}
 		}
 
@@ -92,6 +95,13 @@ namespace AW::Game
 		Bind(g_isActivationBlocked, "IsActivationBlocked"sv, Addresses::IsActivationBlocked);
 		Bind(g_wornHasKeyword, "WornHasKeyword"sv, Addresses::WornHasKeyword);
 		Bind(g_playPipboyOpenAnim, "PlayPipboyOpenAnim"sv, Addresses::PlayPipboyOpenAnim);
+		logger::debug(
+			"game bindings playAction={} materialSwap={} activationBlocked={} wornKeyword={} pipboyAnim={}",
+			g_playAction != nullptr,
+			g_applySwap != nullptr,
+			g_isActivationBlocked != nullptr,
+			g_wornHasKeyword != nullptr,
+			g_playPipboyOpenAnim != nullptr);
 
 		if (!g_playAction) {
 			logger::error("PlayAction is unavailable - AnimatedWorld cannot do anything without it");
@@ -104,9 +114,19 @@ namespace AW::Game
 	bool PlayAction(RE::Actor* a_actor, RE::BGSAction* a_action, RE::TESObjectREFR* a_target)
 	{
 		if (!g_playAction || !a_actor || !a_action || !a_target) {
+			logger::debug(
+				"PlayAction skipped actor={} action={} target={} bound={}",
+				a_actor != nullptr,
+				a_action != nullptr,
+				a_target != nullptr,
+				g_playAction != nullptr);
 			return false;
 		}
 
+		logger::debug("PlayAction actor={} action={} target={}",
+			a_actor->formID,
+			a_action->formID,
+			a_target->formID);
 		return g_playAction(a_actor, a_action, a_target);
 	}
 
@@ -118,9 +138,17 @@ namespace AW::Game
 	void ApplyMaterialSwap(RE::NiAVObject* a_object, const RE::BGSMaterialSwap* a_swap)
 	{
 		if (!g_applySwap || !a_object || !a_swap) {
+			logger::debug(
+				"ApplyMaterialSwap skipped object={} swap={} bound={}",
+				a_object != nullptr,
+				a_swap != nullptr,
+				g_applySwap != nullptr);
 			return;
 		}
 
+		logger::debug("ApplyMaterialSwap object={:#x} swap={:#x}",
+			reinterpret_cast<std::uintptr_t>(a_object),
+			reinterpret_cast<std::uintptr_t>(a_swap));
 		g_applySwap(a_object, a_swap, 1.0f, 1.0f, nullptr);
 	}
 
@@ -132,10 +160,16 @@ namespace AW::Game
 	bool IsActivationBlocked(RE::TESObjectREFR* a_ref)
 	{
 		if (!g_isActivationBlocked || !a_ref) {
+			logger::debug(
+				"IsActivationBlocked skipped ref={} bound={}",
+				a_ref != nullptr,
+				g_isActivationBlocked != nullptr);
 			return false;
 		}
 
-		return g_isActivationBlocked(a_ref);
+		const auto blocked = g_isActivationBlocked(a_ref);
+		logger::debug("IsActivationBlocked ref={} result={}", a_ref->formID, blocked);
+		return blocked;
 	}
 
 	bool CanTestWornKeyword() noexcept
@@ -146,10 +180,17 @@ namespace AW::Game
 	bool WornHasKeyword(RE::TESObjectREFR* a_ref, RE::BGSKeyword* a_keyword)
 	{
 		if (!g_wornHasKeyword || !a_ref || !a_keyword) {
+			logger::debug(
+				"WornHasKeyword skipped ref={} keyword={} bound={}",
+				a_ref != nullptr,
+				a_keyword != nullptr,
+				g_wornHasKeyword != nullptr);
 			return false;
 		}
 
-		return g_wornHasKeyword(a_ref, a_keyword);
+		const auto result = g_wornHasKeyword(a_ref, a_keyword);
+		logger::debug("WornHasKeyword ref={} keyword={} result={}", a_ref->formID, a_keyword->formID, result);
+		return result;
 	}
 
 	bool CanReopenPipboy() noexcept
@@ -160,9 +201,14 @@ namespace AW::Game
 	void PlayPipboyOpenAnim(RE::PipboyManager* a_manager, const RE::BSFixedString& a_menuName)
 	{
 		if (!g_playPipboyOpenAnim || !a_manager) {
+			logger::debug(
+				"PlayPipboyOpenAnim skipped manager={} bound={}",
+				a_manager != nullptr,
+				g_playPipboyOpenAnim != nullptr);
 			return;
 		}
 
+		logger::debug("PlayPipboyOpenAnim menu={}", a_menuName.c_str());
 		g_playPipboyOpenAnim(a_manager, a_menuName);
 	}
 

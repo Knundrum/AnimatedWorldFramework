@@ -1,6 +1,7 @@
 #include "Hooks.h"
 
 #include "Addresses.h"
+#include "Config.h"
 #include "Diagnostics.h"
 #include "Game.h"
 
@@ -121,8 +122,10 @@ namespace AW::Hooks
 				return true;
 			}
 
+			logger::debug("resolving plugin forms");
 			auto* dataHandler = RE::TESDataHandler::GetSingleton();
 			if (!dataHandler) {
+				logger::debug("plugin forms unavailable: TESDataHandler is null");
 				return false;
 			}
 
@@ -168,6 +171,17 @@ namespace AW::Hooks
 					g_idleStopFixKeyword != nullptr,
 					g_globalPipboyEquipAnims != nullptr);
 			}
+			logger::debug(
+				"form resolution ready={} playerTarget={} npcTarget={} activate={} itemAdded={} equip={} flashlight={} keyword={} pipboyGlobal={}",
+				g_formsReady,
+				g_playerTarget != nullptr,
+				g_npcTarget != nullptr,
+				g_actionActivate != nullptr,
+				g_actionItemAdded != nullptr,
+				g_actionEquipAnim != nullptr,
+				g_actionFlashlight != nullptr,
+				g_idleStopFixKeyword != nullptr,
+				g_globalPipboyEquipAnims != nullptr);
 
 			return g_formsReady;
 		}
@@ -176,6 +190,7 @@ namespace AW::Hooks
 		{
 			g_idleStopFixArmed = true;
 			g_idleStopFixExpiry = Clock::now() + IDLE_STOP_TIMEOUT;
+			logger::debug("idle-stop fix armed");
 		}
 
 		void ArmAnimation()
@@ -224,6 +239,7 @@ namespace AW::Hooks
 			RE::BSTEventSource<RE::BSAnimationGraphEvent>* a_source)
 		{
 			if (!g_origProcessGraphEvent) {
+				logger::debug("animation graph event hook has no original function");
 				return RE::BSEventNotifyControl::kContinue;
 			}
 
@@ -232,6 +248,11 @@ namespace AW::Hooks
 				static_cast<RE::BSTEventSink<RE::BSAnimationGraphEvent>*>(player) == a_this) {
 				const auto* tag = a_event.animEvent.c_str();
 				const auto event = tag ? std::string_view{ tag } : std::string_view{};
+				logger::debug(
+					"animation graph event={} idleStopArmed={} reopenPipboy={}",
+					event,
+					g_idleStopFixArmed,
+					g_reopenPipboy);
 
 				if (event == EVENT_IDLE_STOP && g_idleStopFixArmed) {
 					const bool holdsFixedItem =
@@ -262,6 +283,7 @@ namespace AW::Hooks
 
 			auto* player = RE::PlayerCharacter::GetSingleton();
 			if (!player || !player->GetFullyLoaded3D()) {
+				logger::debug("animation graph hook waiting for loaded player 3D");
 				return;
 			}
 
@@ -281,6 +303,7 @@ namespace AW::Hooks
 			g_origProcessGraphEvent =
 				reinterpret_cast<FnProcessGraphEvent>(vtable[PROCESS_EVENT_SLOT]);
 			if (!g_origProcessGraphEvent) {
+				logger::debug("animation graph hook has no original vtable entry");
 				return;
 			}
 
@@ -432,11 +455,20 @@ namespace AW::Hooks
 			bool a_silent,
 			bool a_other)
 		{
+			logger::debug(
+				"ActivateRef target={} activator={} item={} count={} force={} silent={}",
+				a_target ? a_target->formID : 0,
+				a_activator ? a_activator->formID : 0,
+				a_item ? a_item->formID : 0,
+				a_count,
+				a_force,
+				a_silent);
 			const auto callOriginal = [&] {
 				return g_origActivateRef(a_target, a_activator, a_item, a_count, a_force, a_silent, a_other);
 			};
 
 			if (Game::IsActivationBlocked(a_target)) {
+				logger::debug("ActivateRef skipped because activation is blocked");
 				return callOriginal();
 			}
 
@@ -452,6 +484,7 @@ namespace AW::Hooks
 					g_itemFromGround = true;
 				}
 			}
+			logger::debug("ActivateRef animation armed fromGround={}", g_itemFromGround);
 
 			return callOriginal();
 		}
@@ -463,6 +496,13 @@ namespace AW::Hooks
 			RE::TESObjectREFR* a_container,
 			std::int32_t a_acquireType)
 		{
+			logger::debug(
+				"AddAcquiredEvent player={} item={} source={} container={} acquireType={}",
+				a_player ? a_player->formID : 0,
+				a_item ? a_item->formID : 0,
+				a_source ? a_source->formID : 0,
+				a_container ? a_container->formID : 0,
+				a_acquireType);
 			const auto callOriginal = [&] {
 				g_origAddAcquiredEvent(a_player, a_item, a_source, a_container, a_acquireType);
 			};
@@ -470,6 +510,7 @@ namespace AW::Hooks
 			auto* player = RE::PlayerCharacter::GetSingleton();
 
 			if (!player || !a_item || !EnsureFormsResolved() || !g_playerTarget || !g_actionActivate) {
+				logger::debug("AddAcquiredEvent skipped because required state is unavailable");
 				callOriginal();
 				return;
 			}
@@ -500,6 +541,11 @@ namespace AW::Hooks
 			std::uint32_t a_count)
 		{
 			auto* player = RE::PlayerCharacter::GetSingleton();
+			logger::debug(
+				"HandlePlayerItem item={} count={} loaded3D={}",
+				a_item ? a_item->formID : 0,
+				a_count,
+				player && player->GetFullyLoaded3D());
 
 			if (g_trace) {
 				logger::info(
@@ -517,6 +563,10 @@ namespace AW::Hooks
 				g_pendingSwapItem = g_pendingSwap ? a_item : nullptr;
 
 				ArmAnimation();
+				logger::debug(
+					"HandlePlayerItem queued animation item={} swap={}",
+					a_item->formID,
+					g_pendingSwap != nullptr);
 			}
 
 			g_origHandlePlayerItem(a_item, a_extra, a_count);
@@ -528,6 +578,11 @@ namespace AW::Hooks
 			const RE::BGSObjectInstance* a_object,
 			void* a_params)
 		{
+			logger::debug(
+				"UseObject actor={} object={} params={}",
+				a_actor ? a_actor->formID : 0,
+				a_object && a_object->object ? a_object->object->formID : 0,
+				a_params != nullptr);
 			const auto callOriginal = [&] {
 				return g_origUseObject(a_this, a_actor, a_object, a_params);
 			};
@@ -536,6 +591,7 @@ namespace AW::Hooks
 			auto* baseForm = a_object ? static_cast<RE::TESBoundObject*>(a_object->object) : nullptr;
 
 			if (!a_actor || !player || !baseForm || !a_actor->GetFullyLoaded3D()) {
+				logger::debug("UseObject skipped because actor, object, player, or 3D is unavailable");
 				return callOriginal();
 			}
 
@@ -544,6 +600,11 @@ namespace AW::Hooks
 				baseForm->formType == RE::ENUM_FORM_ID::kARMO;
 
 			if (!animatable || !EnsureFormsResolved() || !g_actionEquipAnim) {
+				logger::debug(
+					"UseObject skipped animatable={} formsReady={} actionReady={}",
+					animatable,
+					g_formsReady,
+					g_actionEquipAnim != nullptr);
 				return callOriginal();
 			}
 
@@ -576,6 +637,7 @@ namespace AW::Hooks
 			std::uint32_t a_state,
 			bool a_on)
 		{
+			logger::debug("SetInputDeviceLightState state={} on={}", a_state, a_on);
 			auto* player = RE::PlayerCharacter::GetSingleton();
 
 			if (player && player->GetFullyLoaded3D() && EnsureFormsResolved() && g_actionFlashlight) {
@@ -634,7 +696,7 @@ namespace AW::Hooks
 
 	bool Install()
 	{
-		g_trace = Diagnostics::HookTraceEnabled();
+		g_trace = Config::DebugLoggingEnabled();
 		if (g_trace) {
 			logger::info("[aw] hook tracing enabled");
 		}

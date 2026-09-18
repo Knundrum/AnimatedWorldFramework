@@ -1,5 +1,7 @@
 #include "Addresses.h"
 
+#include "Config.h"
+
 namespace AW::Addresses
 {
 	namespace
@@ -79,6 +81,15 @@ namespace AW::Addresses
 			return std::nullopt;
 		}
 
+		if (Config::DebugLoggingEnabled()) {
+			logger::debug(
+				"resolved {} id {} to rva {:#x} address {:#x}",
+				a_name,
+				IDForRuntime(a_id),
+				*result.rva,
+				REL::Module::get().base() + *result.rva);
+		}
+
 		return REL::Module::get().base() + *result.rva;
 	}
 
@@ -121,7 +132,16 @@ namespace AW::Addresses
 			return std::nullopt;
 		}
 
-		return *owner + static_cast<std::uintptr_t>(offset);
+		const auto address = *owner + static_cast<std::uintptr_t>(offset);
+		if (Config::DebugLoggingEnabled()) {
+			logger::debug(
+				"{} using fixed offset {:#x} at address {:#x}",
+				site.name,
+				offset,
+				address);
+		}
+
+		return address;
 	}
 
 	void LogCapabilityReport()

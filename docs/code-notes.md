@@ -87,7 +87,7 @@ The unreadable-clip fallback is used when the clip walk is unavailable because a
 
 Dummy references are retargeted to the item being animated so one `BGSAction` can drive any object. Pending material swaps are stored with their item so a swap from an earlier pickup cannot be applied to an unrelated item through another path.
 
-Trace logging is gated by the `AnimatedWorld.tracehooks` marker file and cached so the per-frame path does not touch disk. The clip name is logged only when it changes, preventing the settling poll from flooding the log.
+Debug logging is controlled by `Data/F4SE/Plugins/AnimatedWorld.ini`. Set `[AnimatedWorld] DebugLogging = true` to enable detailed address, binding, hook, event, and animation-state logs. It is disabled by default. The clip name is logged only when it changes, preventing the settling poll from flooding the log.
 
 The animation graph event sink is patched into the player's vtable. It needs no address ID because the sink slot index is part of the interface and works on every runtime. Vtable slot 0 is the destructor and slot 1 is `ProcessEvent`.
 
@@ -101,6 +101,8 @@ The fourth `UseObject` parameter is private and not exposed by CommonLibF4RD. Th
 
 The per-frame driver is required because all timed follow-ups depend on it. If it cannot be installed, the plugin remains inactive. The activation hook requires the blocked-reference test; otherwise it could animate references the game refuses to activate.
 
+The repository template is `config/AnimatedWorld.ini`. A `COPY_BUILD=ON` CMake build copies it beside the plugin DLL automatically.
+
 ## Diagnostics
 
 `AnimatedWorld.findcallsites` is an empty marker file next to the F4SE log:
@@ -111,11 +113,7 @@ Before hooks are installed, the diagnostic decodes each hook site's branch and r
 
 Run the dump once on OG to learn callee IDs, then look up those callees rather than the hook owners. They are ordinary named functions and may already be dual-keyed in CommonLibF4RD headers.
 
-`AnimatedWorld.tracehooks` enables verbose per-step animation-state logging. It is also an empty marker file next to the F4SE log:
-
-`Documents\\My Games\\Fallout4\\F4SE\\AnimatedWorld.tracehooks`
-
-The trace marker is checked once and is not intended to be toggled during a session. The callsite dump must run before `Hooks::Install()` or it will decode the plugin's trampolines instead of the game's original branches.
+The INI is loaded once during plugin startup. The callsite dump must run before `Hooks::Install()` or it will decode the plugin's trampolines instead of the game's original branches.
 
 The diagnostic decoder handles the E8/E9 rel32 instruction replaced by `write_call` or `write_branch`. Reverse lookup searches the sorted RVA-to-ID container directly because calling `REL::IDDatabase::Offset2ID::operator()` for an unknown function start invokes `stl::report_and_fail` and would terminate the game.
 

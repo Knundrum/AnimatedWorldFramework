@@ -1,6 +1,7 @@
 #include "Plugin.h"
 
 #include "Addresses.h"
+#include "Config.h"
 #include "Diagnostics.h"
 #include "Game.h"
 #include "Hooks.h"
@@ -43,6 +44,8 @@ namespace
 
 	[[nodiscard]] bool InitializeLogger()
 	{
+		static_cast<void>(AW::Config::Load());
+
 #ifndef NDEBUG
 		auto sink = std::make_shared<spdlog::sinks::msvc_sink_mt>();
 #else
@@ -57,15 +60,17 @@ namespace
 
 		auto log = std::make_shared<spdlog::logger>("global log"s, std::move(sink));
 
-#ifndef NDEBUG
-		log->set_level(spdlog::level::trace);
-#else
-		log->set_level(spdlog::level::info);
+		log->set_level(AW::Config::DebugLoggingEnabled() ? spdlog::level::debug : spdlog::level::info);
 		log->flush_on(spdlog::level::info);
-#endif
 
 		spdlog::set_default_logger(std::move(log));
 		spdlog::set_pattern("[%H:%M:%S.%e] [%^%l%$] %v"s);
+		const auto configPath =
+			AW::Config::Path().empty() ? std::string{ "unavailable" } : AW::Config::Path().string();
+		logger::info(
+			"debug logging={} config={}",
+			AW::Config::DebugLoggingEnabled(),
+			configPath);
 		return true;
 	}
 }

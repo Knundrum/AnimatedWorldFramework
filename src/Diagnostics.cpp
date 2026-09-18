@@ -10,7 +10,6 @@ namespace AW::Diagnostics
 	namespace
 	{
 		constexpr auto CALLSITE_MARKER_NAME = "AnimatedWorld.findcallsites";
-		constexpr auto TRACE_MARKER_NAME = "AnimatedWorld.tracehooks";
 
 		constexpr std::uint8_t OPCODE_CALL_REL32 = 0xE8;
 		constexpr std::uint8_t OPCODE_JMP_REL32 = 0xE9;
@@ -94,12 +93,6 @@ namespace AW::Diagnostics
 	bool CallsiteDumpRequested()
 	{
 		return MarkerExists(CALLSITE_MARKER_NAME);
-	}
-
-	bool HookTraceEnabled()
-	{
-		static const bool enabled = MarkerExists(TRACE_MARKER_NAME);
-		return enabled;
 	}
 
 	void DumpCallsiteTargets()
