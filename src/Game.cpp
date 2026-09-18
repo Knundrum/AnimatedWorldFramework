@@ -9,7 +9,7 @@ namespace AW::Game
 {
 	namespace
 	{
-		using PlayActionFn = bool (*)(RE::Actor*, RE::BGSAction*, RE::TESObjectREFR*, void*, std::uint32_t);
+		using PlayActionFn = bool (*)(RE::Actor*, RE::BGSAction*, RE::TESObjectREFR*);
 		using ApplySwapFn = void(__fastcall*)(RE::NiAVObject*, const RE::BGSMaterialSwap*, float, float, void*);
 		using IsActivationBlockedFn = bool (*)(RE::TESObjectREFR*);
 		using WornHasKeywordFn = bool (*)(RE::TESObjectREFR*, RE::BGSKeyword*);
@@ -125,7 +125,7 @@ namespace AW::Game
 			return false;
 		}
 
-		return g_playAction(a_actor, a_action, a_target, nullptr, 0);
+		return g_playAction(a_actor, a_action, a_target);
 	}
 
 	bool CanApplyMaterialSwap() noexcept

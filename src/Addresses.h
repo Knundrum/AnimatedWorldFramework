@@ -35,14 +35,14 @@ namespace AW::Addresses
 	// Functions the plugin calls directly.
 	// -----------------------------------------------------------------------
 
-	// bool PlayAction(Actor*, BGSAction*, TESObjectREFR*, void*, uint32_t)
-	inline constexpr REL::ID PlayAction{ 1451490, UNKNOWN_ID };
+	// bool Actor::PerformAction(BGSAction*, TESObjectREFR*)
+	inline constexpr REL::ID PlayAction{ 1057231, 2231177, 2231177 };
 
 	// void ApplySwap(NiAVObject*, BGSMaterialSwap const*, float, float, void*)
-	inline constexpr REL::ID ApplyMaterialSwap{ 708895, UNKNOWN_ID };
+	inline constexpr REL::ID ApplyMaterialSwap{ 708895, UNKNOWN_ID, 2189271 };
 
 	// bool TESObjectREFR::IsActivationBlocked(TESObjectREFR*)
-	inline constexpr REL::ID IsActivationBlocked{ 407609, UNKNOWN_ID };
+	inline constexpr REL::ID IsActivationBlocked{ 407609, 2201146, 2201146 };
 
 	// bool TESObjectREFR::WornHasKeyword(TESObjectREFR*, BGSKeyword*)
 	// Present in the old in-tree CommonLibF4 fork, absent from CommonLibF4RD.
@@ -53,35 +53,23 @@ namespace AW::Addresses
 	// that no live runtime result is claimed, and its own pre-merge gate (a probe
 	// on real 1.10.163 / 1.10.984 / 1.11.240 sessions) has not been run.  Verify
 	// the RVA against a real AE session before trusting it.  Inert on OG.
-	inline constexpr REL::ID WornHasKeyword{ 900857, 2200995 };
+	inline constexpr REL::ID WornHasKeyword{ 900857, 2200995, 2200995 };
 
 	// void PipboyManager::PlayPipboyOpenAnim(PipboyManager*, const BSFixedString&)
 	// Present in the old in-tree CommonLibF4 fork, absent from CommonLibF4RD.
-	inline constexpr REL::ID PlayPipboyOpenAnim{ 663900, UNKNOWN_ID };
+	inline constexpr REL::ID PlayPipboyOpenAnim{ 663900, 2225444, 2225444 };
 
 	// -----------------------------------------------------------------------
 	// Hook sites.
 	//
 	// `owner` is the function that CONTAINS the call being replaced; the
-	// offsets are relative to the start of that function.  AE ids marked below
-	// were recovered from CommonLibF4RD's own headers, which carry (OG, AE)
-	// pairs; the interior offsets for those runtimes are still unknown, so the
-	// sites stay disabled until either the offset or a callsite target is
-	// supplied.
+	// offsets are relative to the start of that function.  Runtime slots are
+	// explicit: an unverified family remains UNKNOWN_ID/UNKNOWN_OFFSET.
 	// -----------------------------------------------------------------------
 
 	// -----------------------------------------------------------------------
-	// Candidate callsite targets from commonlib_NonVR PR #88, NOT yet applied.
-	//
-	// That PR names ProcessLists::RunActorUpdates as AE/NG id 2234075 (AE RVA
-	// 0xDB28C0, NG RVA 0xD2C880).  Our RunActorUpdates hook site is a call at
-	// owner+0xF0, so 2234075 is almost certainly the CALLEE, i.e. a
-	// `callsiteTarget` rather than an `owner` id.  It cannot be used until the
-	// matching OG id for the same function is known - run the plugin once with
-	// the AnimatedWorld.findcallsites marker to read it off the OG binary.
-	//
-	// Do not put 2234075 in RunActorUpdates' owner slot.  It is a different
-	// function from the one we hook inside.
+	// ProcessLists::RunActorUpdates is a different function from the owner of
+	// this hook.  Do not put its id in the owner slot.
 	// -----------------------------------------------------------------------
 
 	enum class Site : std::size_t
@@ -133,22 +121,23 @@ namespace AW::Addresses
 		// the owner - true of every entry in this table.
 		HookSite{
 			.name = "RunActorUpdates"sv,
-			.owner = REL::ID{ 556439, UNKNOWN_ID },
+			.owner = REL::ID{ 556439, UNKNOWN_ID, 2227608 },
 			.ogOffset = 0xF0,
 			.ngOffset = UNKNOWN_OFFSET,
 			.aeOffset = UNKNOWN_OFFSET,
-			// Callee on OG is id 1318162 (rva 0xd39e40), unnamed in
-			// CommonLibF4RD.  Needs an AE id before it can be used.
+			// Callee is Main::OnIdle_UpdatePlayer: OG 1318162, AE 2228929.
+			.callsiteTarget = REL::ID{ 1318162, UNKNOWN_ID, 2228929 },
 			.required = true },
 
 		// PlayerCharacter item-acquired event.
 		// Callee on OG is id 876119 (rva 0xe9f220), unnamed in CommonLibF4RD.
 		HookSite{
 			.name = "AddAcquiredEvent"sv,
-			.owner = REL::ID{ 1401485, UNKNOWN_ID },
+			.owner = REL::ID{ 1401485, UNKNOWN_ID, UNKNOWN_ID },
 			.ogOffset = 0x2D6,
 			.ngOffset = UNKNOWN_OFFSET,
-			.aeOffset = UNKNOWN_OFFSET },
+			.aeOffset = UNKNOWN_OFFSET,
+			.callsiteTarget = REL::ID{ 876119, UNKNOWN_ID, 2232930 } },
 
 		// Owner 785533 is unnamed in CommonLibF4RD.  The findcallsites dump
 		// confirms the callee at +0x38A is OG id 753531, which CommonLibF4RD
@@ -161,43 +150,46 @@ namespace AW::Addresses
 		// path was taken ("callsite discovered automatically" vs the warning).
 		HookSite{
 			.name = "ActivateRef"sv,
-			.owner = REL::ID{ 785533, UNKNOWN_ID },
+			.owner = REL::ID{ 785533, UNKNOWN_ID, 2233039 },
 			.ogOffset = 0x38A,
 			.ngOffset = UNKNOWN_OFFSET,
 			.aeOffset = UNKNOWN_OFFSET,
-			.callsiteTarget = REL::ID{ 753531, 2201147 } },
+			.callsiteTarget = REL::ID{ 753531, UNKNOWN_ID, 2201147 } },
 
-		// Owner is TESObjectREFR::AddInventoryItem, REL::ID(78185, 2200949) in
+		// Owner is TESObjectREFR::AddInventoryItem, OG id 78185 and AE id 2200949 in
 		// CommonLibF4RD.  We replace a call inside it at +0xA40.
 		// Callee on OG is id 357079 (rva 0xae1160), unnamed in CommonLibF4RD.
 		HookSite{
 			.name = "HandlePlayerItem"sv,
-			.owner = REL::ID{ 78185, 2200949 },
+			.owner = REL::ID{ 78185, UNKNOWN_ID, 2200949 },
 			.ogOffset = 0xA40,
 			.ngOffset = UNKNOWN_OFFSET,
-			.aeOffset = UNKNOWN_OFFSET },
+			.aeOffset = UNKNOWN_OFFSET,
+			.callsiteTarget = REL::ID{ 357079, UNKNOWN_ID, UNKNOWN_ID } },
 
-		// Owner is ActorEquipManager::EquipObject, REL::ID(988029, 2231392) in
+		// Owner is ActorEquipManager::EquipObject, OG id 988029 and AE id 2231392 in
 		// CommonLibF4RD.  The call at +0x15A takes the same argument list, i.e.
 		// EquipObject is a thin wrapper around an inner worker.
 		// Callee on OG is id 301794 (rva 0xe1d100), unnamed in CommonLibF4RD.
 		HookSite{
 			.name = "UseObject"sv,
-			.owner = REL::ID{ 988029, 2231392 },
+			.owner = REL::ID{ 988029, UNKNOWN_ID, 2231392 },
 			.ogOffset = 0x15A,
 			.ngOffset = UNKNOWN_OFFSET,
-			.aeOffset = UNKNOWN_OFFSET },
+			.aeOffset = UNKNOWN_OFFSET,
+			.callsiteTarget = REL::ID{ 301794, UNKNOWN_ID, 2231406 } },
 
-		// Owner is PlayerCharacter::TogglePipBoyLight, REL::ID(520007, 2233201)
+		// Owner is PlayerCharacter::TogglePipBoyLight, OG id 520007 and AE id 2233201
 		// in CommonLibF4RD.  The findcallsites dump shows the site is an E9 JMP
 		// (a tail call), not a call - hence the kJump branch kind below.
 		// Callee on OG is id 157452 (rva 0x1b2c080), unnamed in CommonLibF4RD.
 		HookSite{
 			.name = "SetInputDeviceLightState"sv,
-			.owner = REL::ID{ 520007, 2233201 },
+			.owner = REL::ID{ 520007, UNKNOWN_ID, 2233201 },
 			.ogOffset = 0x5B,
 			.ngOffset = UNKNOWN_OFFSET,
 			.aeOffset = UNKNOWN_OFFSET,
+			.callsiteTarget = REL::ID{ 157452, UNKNOWN_ID, 2268396 },
 			.branch = REL::AutoCallsiteBranch::kJump },
 	} };
 
