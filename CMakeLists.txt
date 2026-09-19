@@ -44,6 +44,25 @@ project(
 	LANGUAGES CXX
 )
 
+include(FetchContent)
+
+FetchContent_Declare(
+	MinHook
+	GIT_REPOSITORY https://github.com/TsudaKageyu/minhook.git
+	GIT_TAG c3fcafdc10146beb5919319d0683e44e3c30d537
+	GIT_SHALLOW FALSE
+)
+FetchContent_MakeAvailable(MinHook)
+
+if (NOT TARGET minhook)
+	message(FATAL_ERROR "MinHook target was not created")
+endif()
+get_target_property(_minhook_type minhook TYPE)
+if (NOT _minhook_type STREQUAL "STATIC_LIBRARY")
+	message(FATAL_ERROR "MinHook must be a STATIC_LIBRARY, found '${_minhook_type}'")
+endif()
+unset(_minhook_type)
+
 configure_file(
 	${CMAKE_CURRENT_SOURCE_DIR}/cmake/Version.h.in
 	${CMAKE_CURRENT_BINARY_DIR}/include/Version.h
@@ -96,6 +115,22 @@ if (NOT TARGET CommonLibF4)
 			"Run this once from the project root:\n"
 			"    git clone https://github.com/Zzyxz/CommonLibF4RD.git external/CommonLibF4RD\n"
 			"or configure with -DCOMMONLIBF4RD_PATH=<path to a CommonLibF4RD checkout>."
+		)
+	endif ()
+
+	set(COMMONLIBF4RD_COMMIT "8a1da09250c16ac909de2bca94c8a66a4e7fd956" CACHE STRING
+		"Pinned CommonLibF4RD commit")
+	find_package(Git REQUIRED)
+	execute_process(
+		COMMAND "${GIT_EXECUTABLE}" -C "${_commonlibf4rd_root}" rev-parse HEAD
+		OUTPUT_VARIABLE _commonlibf4rd_head
+		OUTPUT_STRIP_TRAILING_WHITESPACE
+		RESULT_VARIABLE _commonlibf4rd_git_result
+	)
+	if (NOT _commonlibf4rd_git_result EQUAL 0 OR NOT "${_commonlibf4rd_head}" STREQUAL "${COMMONLIBF4RD_COMMIT}")
+		message(
+			FATAL_ERROR
+			"CommonLibF4RD must be checked out at ${COMMONLIBF4RD_COMMIT}; found '${_commonlibf4rd_head}'."
 		)
 	endif ()
 
@@ -169,6 +204,7 @@ target_link_libraries(
 	PRIVATE
 		CommonLibF4::CommonLibF4
 		fmt::fmt
+		minhook
 		spdlog::spdlog
 )
 
@@ -249,6 +285,7 @@ if (COPY_BUILD)
 			POST_BUILD
 			COMMAND ${CMAKE_COMMAND} -E copy $<TARGET_FILE:${PROJECT_NAME}> ${Fallout4Path}/Data/F4SE/Plugins/
 			COMMAND ${CMAKE_COMMAND} -E copy $<TARGET_PDB_FILE:${PROJECT_NAME}> ${Fallout4Path}/Data/F4SE/Plugins/
+			COMMAND ${CMAKE_COMMAND} -E copy_if_different ${CMAKE_CURRENT_SOURCE_DIR}/config/AnimatedWorld.ini ${Fallout4Path}/Data/F4SE/Plugins/
 		)
 	else ()
 		message(

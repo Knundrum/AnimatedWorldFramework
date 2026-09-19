@@ -6,6 +6,7 @@
 /.idea/
 /CMakeUserPresets.json
 /compile_commands.json
+/external/CommonLibF4RD/
 
 *.bin
 *.dll

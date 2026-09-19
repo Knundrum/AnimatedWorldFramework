@@ -1,5 +1,7 @@
 #include "Addresses.h"
 
+#include "Config.h"
+
 namespace AW::Addresses
 {
 	namespace
@@ -22,21 +24,11 @@ namespace AW::Addresses
 			}
 		}
 
-		// The id actually used on this runtime, for logging.
 		[[nodiscard]] std::uint64_t IDForRuntime(const REL::ID& a_id) noexcept
 		{
 			return a_id.id();
 		}
 
-		// Strips every id except the running family's.
-		//
-		// IDDatabase::resolve() on OG tries ae_id() as a runtime pattern FIRST
-		// and only falls back to the OG legacy table if that misses.  So a real
-		// AE id sitting in the AE slot can pattern-match somewhere inside the OG
-		// executable and win, and the hook is then written into an unrelated
-		// function with no error reported.  Handing resolve() an ID that carries
-		// only the current family's number removes that whole failure mode: on
-		// OG the empty AE slot cannot match, so the legacy table always decides.
 		[[nodiscard]] REL::ID IsolateForRuntime(const REL::ID& a_id) noexcept
 		{
 			switch (CurrentFamily()) {
@@ -69,6 +61,22 @@ namespace AW::Addresses
 		return IDForRuntime(a_id) != REL::ID::INVALID_ID;
 	}
 
+	bool IsVerifiedRuntime() noexcept
+	{
+		const auto version = REL::Module::get().version();
+		return version == REL::Version{ 1, 10, 163, 0 } ||
+		       version == REL::Version{ 1, 10, 984, 0 } ||
+		       version == REL::Version{ 1, 11, 240, 0 };
+	}
+
+	bool IsVerifiedUseObjectRuntime() noexcept
+	{
+		const auto version = REL::Module::get().version();
+		const auto family = CurrentFamily();
+		return (family == REL::RuntimeFamily::kNG && version == REL::Version{ 1, 10, 984, 0 }) ||
+		       (family == REL::RuntimeFamily::kAE && version == REL::Version{ 1, 11, 240, 0 });
+	}
+
 	std::optional<std::uintptr_t> ResolveFunction(std::string_view a_name, const REL::ID& a_id)
 	{
 		if (!HasIDForRuntime(a_id)) {
@@ -89,7 +97,55 @@ namespace AW::Addresses
 			return std::nullopt;
 		}
 
+		if (Config::DebugLoggingEnabled()) {
+			logger::debug(
+				"resolved {} id {} to rva {:#x} address {:#x}",
+				a_name,
+				IDForRuntime(a_id),
+				*result.rva,
+				REL::Module::get().base() + *result.rva);
+		}
+
 		return REL::Module::get().base() + *result.rva;
+	}
+
+	std::optional<std::uintptr_t> ResolveUseObjectEntry()
+	{
+		const auto version = REL::Module::get().version();
+		const auto family = CurrentFamily();
+		std::optional<std::uintptr_t> expectedRva;
+		if (family == REL::RuntimeFamily::kNG && version == REL::Version{ 1, 10, 984, 0 }) {
+			expectedRva = 0xC61490;
+		} else if (family == REL::RuntimeFamily::kAE && version == REL::Version{ 1, 11, 240, 0 }) {
+			expectedRva = 0xCE7460;
+		} else {
+			logger::error("UseObject entry rejected on unverified runtime {}", version.string());
+			return std::nullopt;
+		}
+
+		const auto& site = GetSite(Site::kUseObject);
+		const auto address = ResolveFunction(site.name, site.callsiteTarget);
+		if (!address) {
+			return std::nullopt;
+		}
+
+		const auto base = REL::Module::get().base();
+		if (*address < base) {
+			logger::error("UseObject entry resolved below module base on runtime {}", version.string());
+			return std::nullopt;
+		}
+
+		const auto actualRva = *address - base;
+		if (actualRva != *expectedRva) {
+			logger::error(
+				"UseObject entry RVA mismatch on {}: expected {:#x}, found {:#x}",
+				version.string(),
+				*expectedRva,
+				actualRva);
+			return std::nullopt;
+		}
+
+		return address;
 	}
 
 	std::optional<std::uintptr_t> ResolveSite(Site a_site)
@@ -101,9 +157,6 @@ namespace AW::Addresses
 			return std::nullopt;
 		}
 
-		// Preferred: let CommonLibF4RD find the call itself.  Survives a shifted
-		// function body or inserted instructions, and fails loudly rather than
-		// guessing when the call is gone or ambiguous.
 		if (HasIDForRuntime(site.callsiteTarget)) {
 			const auto calls = REL::resolve_callsites(
 				IsolateForRuntime(site.owner),
@@ -134,7 +187,64 @@ namespace AW::Addresses
 			return std::nullopt;
 		}
 
-		return *owner + static_cast<std::uintptr_t>(offset);
+		const auto address = *owner + static_cast<std::uintptr_t>(offset);
+		if (Config::DebugLoggingEnabled()) {
+			logger::debug(
+				"{} using fixed offset {:#x} at address {:#x}",
+				site.name,
+				offset,
+				address);
+		}
+
+		return address;
+	}
+
+	bool ValidateSite(Site a_site, std::uintptr_t a_address)
+	{
+		const auto& site = GetSite(a_site);
+		const auto expectedOpcode =
+			site.branch == REL::AutoCallsiteBranch::kJump ? std::uint8_t{ 0xE9 } : std::uint8_t{ 0xE8 };
+		const auto* bytes = reinterpret_cast<const std::uint8_t*>(a_address);
+
+		if (bytes[0] != expectedOpcode) {
+			logger::error(
+				"{}: refusing hook at {:#x}: expected {:#04x}, found {:#04x}",
+				site.name,
+				a_address,
+				expectedOpcode,
+				bytes[0]);
+			return false;
+		}
+
+		if (!HasIDForRuntime(site.callsiteTarget)) {
+			return true;
+		}
+
+		const auto target = REL::IDDatabase::get().resolve(IsolateForRuntime(site.callsiteTarget));
+		if (!target) {
+			logger::error(
+				"{}: refusing hook because target id {} cannot be resolved ({})",
+				site.name,
+				IDForRuntime(site.callsiteTarget),
+				REL::id_resolve_status_text(target.status));
+			return false;
+		}
+
+		std::int32_t displacement{ 0 };
+		std::memcpy(std::addressof(displacement), bytes + 1, sizeof(displacement));
+		const auto actualTarget = a_address + 5 + static_cast<std::intptr_t>(displacement);
+		const auto expectedTarget = REL::Module::get().base() + *target.rva;
+		if (actualTarget != expectedTarget) {
+			logger::error(
+				"{}: refusing hook at {:#x}: target {:#x} does not match expected {:#x}",
+				site.name,
+				a_address,
+				actualTarget,
+				expectedTarget);
+			return false;
+		}
+
+		return true;
 	}
 
 	void LogCapabilityReport()

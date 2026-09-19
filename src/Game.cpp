@@ -4,12 +4,13 @@
 
 #include "RE/Bethesda/PlayerCharacter.h"
 #include "RE/Havok/hkArray.h"
+#include "RE/VTABLE_IDs.h"
 
 namespace AW::Game
 {
 	namespace
 	{
-		using PlayActionFn = bool (*)(RE::Actor*, RE::BGSAction*, RE::TESObjectREFR*, void*, std::uint32_t);
+		using PlayActionFn = bool (*)(RE::Actor*, RE::BGSAction*, RE::TESObjectREFR*);
 		using ApplySwapFn = void(__fastcall*)(RE::NiAVObject*, const RE::BGSMaterialSwap*, float, float, void*);
 		using IsActivationBlockedFn = bool (*)(RE::TESObjectREFR*);
 		using WornHasKeywordFn = bool (*)(RE::TESObjectREFR*, RE::BGSKeyword*);
@@ -26,29 +27,25 @@ namespace AW::Game
 		{
 			if (const auto address = Addresses::ResolveFunction(a_name, a_id)) {
 				a_out = reinterpret_cast<F>(*address);
+				logger::debug("bound {} at {:#x}", a_name, *address);
+			} else {
+				logger::debug("binding unavailable: {}", a_name);
 			}
 		}
 
-		// -------------------------------------------------------------------
-		// Havok / BSAnimationGraph byte offsets.
-		//
-		// Verified against 1.10.163 (OG).  The same numbers are used as a
-		// starting point for NG/AE but are flagged unverified, which disables
-		// the clip walk on those runtimes until someone confirms them.
-		// -------------------------------------------------------------------
 		struct AnimGraphLayout
 		{
-			std::ptrdiff_t managerVariableCache;  // BSAnimationGraphManager -> variableCache
-			std::ptrdiff_t cacheGraphToCacheFor;  // BSAnimationGraphVariableCache -> graphToCacheFor
-			std::ptrdiff_t graphBehaviorGraph;    // BShkbAnimationGraph -> hkbBehaviorGraph
-			std::ptrdiff_t behaviorActiveNodes;   // hkbBehaviorGraph -> active node array
-			std::ptrdiff_t clipUserData;          // hkbClipGenerator -> user data (non-zero == live)
-			std::ptrdiff_t clipName;              // hkbClipGenerator -> name
-			std::ptrdiff_t clipLocalTime;         // hkbClipGenerator -> local time
-			std::ptrdiff_t clipAnimationControl;  // hkbClipGenerator -> hkaDefaultAnimationControl
-			std::ptrdiff_t controlBinding;        // hkaAnimationControl -> hkaAnimationBinding
-			std::ptrdiff_t bindingAnimation;      // hkaAnimationBinding -> hkaAnimation
-			std::ptrdiff_t animationDuration;     // hkaAnimation -> duration
+			std::ptrdiff_t managerVariableCache;
+			std::ptrdiff_t cacheGraphToCacheFor;
+			std::ptrdiff_t graphBehaviorGraph;
+			std::ptrdiff_t behaviorActiveNodes;
+			std::ptrdiff_t clipUserData;
+			std::ptrdiff_t clipName;
+			std::ptrdiff_t clipLocalTime;
+			std::ptrdiff_t clipAnimationControl;
+			std::ptrdiff_t controlBinding;
+			std::ptrdiff_t bindingAnimation;
+			std::ptrdiff_t animationDuration;
 			bool verified;
 		};
 
@@ -57,7 +54,7 @@ namespace AW::Game
 			.cacheGraphToCacheFor = 0x38,
 			.graphBehaviorGraph = 0x378,
 			.behaviorActiveNodes = 0xE0,
-			.clipUserData = 0x08,
+			.clipUserData = 0x30,
 			.clipName = 0x38,
 			.clipLocalTime = 0x140,
 			.clipAnimationControl = 0xD0,
@@ -67,19 +64,29 @@ namespace AW::Game
 			.verified = true
 		};
 
-		[[nodiscard]] constexpr AnimGraphLayout Unverified(AnimGraphLayout a_layout) noexcept
-		{
-			a_layout.verified = false;
-			return a_layout;
-		}
-
-		// Same numbers, not yet confirmed on these runtimes.  Once they have
-		// been checked against a real NG/AE binary, drop the Unverified() call.
-		constexpr AnimGraphLayout kLayoutNG = Unverified(kLayoutOG);
-		constexpr AnimGraphLayout kLayoutAE = Unverified(kLayoutOG);
+		constexpr AnimGraphLayout kLayoutNG = kLayoutOG;
+		constexpr AnimGraphLayout kLayoutAE = kLayoutOG;
+		constexpr AnimGraphLayout kLayoutUnverified{
+			.managerVariableCache = 0,
+			.cacheGraphToCacheFor = 0,
+			.graphBehaviorGraph = 0,
+			.behaviorActiveNodes = 0,
+			.clipUserData = 0,
+			.clipName = 0,
+			.clipLocalTime = 0,
+			.clipAnimationControl = 0,
+			.controlBinding = 0,
+			.bindingAnimation = 0,
+			.animationDuration = 0,
+			.verified = false
+		};
 
 		[[nodiscard]] const AnimGraphLayout& CurrentLayout() noexcept
 		{
+			if (!Addresses::IsVerifiedRuntime()) {
+				return kLayoutUnverified;
+			}
+
 			switch (REL::runtime_family(REL::Module::get().version())) {
 			case REL::RuntimeFamily::kOG:
 				return kLayoutOG;
@@ -91,10 +98,14 @@ namespace AW::Game
 			}
 		}
 
-		// A behaviour graph should never hold anywhere near this many active
-		// generators; the bound stops a corrupt or unexpected array from
-		// running the walk off the end of the heap.
-		constexpr std::size_t MAX_ACTIVE_GENERATORS = 512;
+		constexpr std::size_t MAX_ACTIVE_NODES = 512;
+
+		struct ActiveNodeInfo
+		{
+			std::uint8_t unknown[0x58];
+			const void* nodeClone;
+		};
+		static_assert(offsetof(ActiveNodeInfo, nodeClone) == 0x58);
 
 		template <class T>
 		[[nodiscard]] T ReadAt(const void* a_base, std::ptrdiff_t a_offset) noexcept
@@ -107,9 +118,26 @@ namespace AW::Game
 	{
 		Bind(g_playAction, "PlayAction"sv, Addresses::PlayAction);
 		Bind(g_applySwap, "ApplyMaterialSwap"sv, Addresses::ApplyMaterialSwap);
-		Bind(g_isActivationBlocked, "IsActivationBlocked"sv, Addresses::IsActivationBlocked);
-		Bind(g_wornHasKeyword, "WornHasKeyword"sv, Addresses::WornHasKeyword);
+		if (Addresses::IsVerifiedRuntime()) {
+			Bind(g_isActivationBlocked, "IsActivationBlocked"sv, Addresses::IsActivationBlocked);
+			Bind(g_wornHasKeyword, "WornHasKeyword"sv, Addresses::WornHasKeyword);
+		} else {
+			static bool reported = false;
+			if (!reported) {
+				reported = true;
+				logger::warn(
+					"native TESObjectREFR helper bindings skipped on unverified runtime {}",
+					REL::Module::get().version().string());
+			}
+		}
 		Bind(g_playPipboyOpenAnim, "PlayPipboyOpenAnim"sv, Addresses::PlayPipboyOpenAnim);
+		logger::debug(
+			"game bindings playAction={} materialSwap={} activationBlocked={} wornKeyword={} pipboyAnim={}",
+			g_playAction != nullptr,
+			g_applySwap != nullptr,
+			g_isActivationBlocked != nullptr,
+			g_wornHasKeyword != nullptr,
+			g_playPipboyOpenAnim != nullptr);
 
 		if (!g_playAction) {
 			logger::error("PlayAction is unavailable - AnimatedWorld cannot do anything without it");
@@ -122,10 +150,20 @@ namespace AW::Game
 	bool PlayAction(RE::Actor* a_actor, RE::BGSAction* a_action, RE::TESObjectREFR* a_target)
 	{
 		if (!g_playAction || !a_actor || !a_action || !a_target) {
+			logger::debug(
+				"PlayAction skipped actor={} action={} target={} bound={}",
+				a_actor != nullptr,
+				a_action != nullptr,
+				a_target != nullptr,
+				g_playAction != nullptr);
 			return false;
 		}
 
-		return g_playAction(a_actor, a_action, a_target, nullptr, 0);
+		logger::debug("PlayAction actor={} action={} target={}",
+			a_actor->formID,
+			a_action->formID,
+			a_target->formID);
+		return g_playAction(a_actor, a_action, a_target);
 	}
 
 	bool CanApplyMaterialSwap() noexcept
@@ -136,9 +174,17 @@ namespace AW::Game
 	void ApplyMaterialSwap(RE::NiAVObject* a_object, const RE::BGSMaterialSwap* a_swap)
 	{
 		if (!g_applySwap || !a_object || !a_swap) {
+			logger::debug(
+				"ApplyMaterialSwap skipped object={} swap={} bound={}",
+				a_object != nullptr,
+				a_swap != nullptr,
+				g_applySwap != nullptr);
 			return;
 		}
 
+		logger::debug("ApplyMaterialSwap object={:#x} swap={:#x}",
+			reinterpret_cast<std::uintptr_t>(a_object),
+			reinterpret_cast<std::uintptr_t>(a_swap));
 		g_applySwap(a_object, a_swap, 1.0f, 1.0f, nullptr);
 	}
 
@@ -150,10 +196,16 @@ namespace AW::Game
 	bool IsActivationBlocked(RE::TESObjectREFR* a_ref)
 	{
 		if (!g_isActivationBlocked || !a_ref) {
+			logger::debug(
+				"IsActivationBlocked skipped ref={} bound={}",
+				a_ref != nullptr,
+				g_isActivationBlocked != nullptr);
 			return false;
 		}
 
-		return g_isActivationBlocked(a_ref);
+		const auto blocked = g_isActivationBlocked(a_ref);
+		logger::debug("IsActivationBlocked ref={} result={}", a_ref->formID, blocked);
+		return blocked;
 	}
 
 	bool CanTestWornKeyword() noexcept
@@ -164,10 +216,17 @@ namespace AW::Game
 	bool WornHasKeyword(RE::TESObjectREFR* a_ref, RE::BGSKeyword* a_keyword)
 	{
 		if (!g_wornHasKeyword || !a_ref || !a_keyword) {
+			logger::debug(
+				"WornHasKeyword skipped ref={} keyword={} bound={}",
+				a_ref != nullptr,
+				a_keyword != nullptr,
+				g_wornHasKeyword != nullptr);
 			return false;
 		}
 
-		return g_wornHasKeyword(a_ref, a_keyword);
+		const auto result = g_wornHasKeyword(a_ref, a_keyword);
+		logger::debug("WornHasKeyword ref={} keyword={} result={}", a_ref->formID, a_keyword->formID, result);
+		return result;
 	}
 
 	bool CanReopenPipboy() noexcept
@@ -178,9 +237,14 @@ namespace AW::Game
 	void PlayPipboyOpenAnim(RE::PipboyManager* a_manager, const RE::BSFixedString& a_menuName)
 	{
 		if (!g_playPipboyOpenAnim || !a_manager) {
+			logger::debug(
+				"PlayPipboyOpenAnim skipped manager={} bound={}",
+				a_manager != nullptr,
+				g_playPipboyOpenAnim != nullptr);
 			return;
 		}
 
+		logger::debug("PlayPipboyOpenAnim menu={}", a_menuName.c_str());
 		g_playPipboyOpenAnim(a_manager, a_menuName);
 	}
 
@@ -195,6 +259,12 @@ namespace AW::Game
 
 		const auto& layout = CurrentLayout();
 		if (!layout.verified || !a_actor) {
+			return false;
+		}
+
+		static const auto clipGeneratorVTable =
+			Addresses::ResolveFunction("hkbClipGenerator vtable"sv, RE::VTABLE::hkbClipGenerator.front());
+		if (!clipGeneratorVTable) {
 			return false;
 		}
 
@@ -218,32 +288,30 @@ namespace AW::Game
 			return false;
 		}
 
-		using NodeArray = RE::hkArray<void**>;
+		using NodeArray = RE::hkArray<ActiveNodeInfo*>;
 		const auto* activeNodes = ReadAt<const NodeArray*>(behaviorGraph, layout.behaviorActiveNodes);
 		if (!activeNodes || activeNodes->_size <= 0 || !activeNodes->_data) {
 			return false;
 		}
 
-		void** generator = *activeNodes->_data;
-		if (!generator) {
-			return false;
-		}
-
-		// The original walk assigned the clip name for EVERY live generator and
-		// only bailed out early once the whole animation-binding chain resolved,
-		// so a generator could be identified by name even when its duration was
-		// not reachable.  Requiring the full chain here silently lost the
-		// "DynamicIdle" match that drives the item-added animation, so the looser
-		// behaviour is reproduced - minus the original's use of a stale duration.
 		bool sawLiveGenerator = false;
 		std::string lastName;
 		float lastTime = 0.0f;
 
-		for (std::size_t i = 0; i < MAX_ACTIVE_GENERATORS && *generator; ++i, ++generator) {
-			const auto* clip = *generator;
+		for (std::int32_t i = 0;
+			i < activeNodes->_size && i < static_cast<std::int32_t>(MAX_ACTIVE_NODES);
+			++i) {
+			const auto* nodeInfo = activeNodes->_data[i];
+			if (!nodeInfo || !nodeInfo->nodeClone) {
+				continue;
+			}
 
-			// Zero user data means the generator is not currently driving a clip.
-			if (ReadAt<std::uint32_t>(clip, layout.clipUserData) == 0) {
+			const auto* clip = nodeInfo->nodeClone;
+			if (ReadAt<const void*>(clip, 0) != reinterpret_cast<const void*>(*clipGeneratorVTable)) {
+				continue;
+			}
+
+			if (ReadAt<std::uint64_t>(clip, layout.clipUserData) == 0) {
 				continue;
 			}
 
@@ -282,8 +350,6 @@ namespace AW::Game
 			return true;
 		}
 
-		// A live generator was found but its duration could not be read.  The
-		// name is still usable for deciding what is playing.
 		if (sawLiveGenerator && !lastName.empty()) {
 			a_out.currentTime = lastTime;
 			a_out.duration = 0.0f;

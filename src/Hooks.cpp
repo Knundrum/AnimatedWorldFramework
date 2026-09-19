@@ -1,7 +1,9 @@
 #include "Hooks.h"
 
 #include "Addresses.h"
+#include "Config.h"
 #include "Diagnostics.h"
+#include "EntryHooks.h"
 #include "Game.h"
 
 #include "RE/Bethesda/BSInputDeviceManager.h"
@@ -19,9 +21,6 @@ namespace AW::Hooks
 	{
 		using namespace std::chrono_literals;
 
-		// -------------------------------------------------------------------
-		// Plugin content
-		// -------------------------------------------------------------------
 		constexpr auto ESP_NAME = "Animated World - Base.esp"sv;
 
 		constexpr std::uint32_t FORMID_IDLE_STOP_FIX = 0x34D3A;
@@ -31,24 +30,15 @@ namespace AW::Hooks
 		constexpr std::uint32_t FORMID_ACTION_FLASHLIGHT = 0x14F3E;
 		constexpr std::uint32_t FORMID_GLOBAL_PIPBOY_EQUIP = 0x399BC;
 
-		// -------------------------------------------------------------------
-		// Timing
-		// -------------------------------------------------------------------
 		constexpr auto ANIMATION_SETTLE_DELAY = 100ms;
 		constexpr auto GROUND_PICKUP_DELAY = 100ms;
 		constexpr auto MATERIAL_SWAP_DELAY = 200ms;
 		constexpr auto DYNAMIC_IDLE_TAIL = 200ms;
 
-		// Used only when the clip walk is unavailable (unverified struct layout
-		// on NG/AE).  Roughly matches a typical pickup idle.
 		constexpr auto CLIP_UNREADABLE_FALLBACK = 700ms;
 
-		// The IdleStop fix used to latch on forever if the event never arrived,
-		// so a later unrelated IdleStop would consume it.  It now expires.
 		constexpr auto IDLE_STOP_TIMEOUT = 2s;
 
-		// An armed animation whose clip never turns into DynamicIdle used to
-		// poll every frame for the rest of the session.  Give it up eventually.
 		constexpr auto ANIMATION_PENDING_TIMEOUT = 3s;
 
 		constexpr auto DYNAMIC_IDLE_CLIP = "DynamicIdle"sv;
@@ -59,9 +49,6 @@ namespace AW::Hooks
 
 		using Clock = std::chrono::steady_clock;
 
-		// -------------------------------------------------------------------
-		// Resolved plugin forms
-		// -------------------------------------------------------------------
 		RE::BGSKeyword* g_idleStopFixKeyword{ nullptr };
 		RE::BGSAction* g_actionActivate{ nullptr };
 		RE::BGSAction* g_actionItemAdded{ nullptr };
@@ -69,16 +56,11 @@ namespace AW::Hooks
 		RE::BGSAction* g_actionFlashlight{ nullptr };
 		RE::TESGlobal* g_globalPipboyEquipAnims{ nullptr };
 
-		// Dummy references retargeted at whichever item is being animated, so a
-		// single BGSAction can drive an animation for any object.
 		RE::TESObjectREFR* g_playerTarget{ nullptr };
 		RE::TESObjectREFR* g_npcTarget{ nullptr };
 
 		bool g_formsReady{ false };
 
-		// -------------------------------------------------------------------
-		// State machine
-		// -------------------------------------------------------------------
 		bool g_reopenPipboy{ false };
 
 		bool g_idleStopFixArmed{ false };
@@ -96,25 +78,15 @@ namespace AW::Hooks
 
 		bool g_itemFromGround{ false };
 
-		// The swap is remembered together with the item it belongs to, so a
-		// swap left over from an earlier pickup can never be applied to an
-		// unrelated item that arrived through a different code path.
 		RE::BGSMaterialSwap* g_pendingSwap{ nullptr };
 		RE::TESBoundObject* g_pendingSwapItem{ nullptr };
 
 		bool g_graphEventHooked{ false };
 
-		// Verbose state-machine logging, gated on the AnimatedWorld.tracehooks
-		// marker file.  Cached so the per-frame path does not touch the disk.
 		bool g_trace{ false };
 
-		// Only log the clip name when it changes, or the per-frame poll floods
-		// the log while an animation is settling.
 		std::string g_lastTracedClip;
 
-		// -------------------------------------------------------------------
-		// Originals
-		// -------------------------------------------------------------------
 		using FnRunActorUpdates = void(__fastcall*)(void*);
 		using FnAddAcquiredEvent = void(__fastcall*)(RE::PlayerCharacter*, RE::TESBoundObject*, RE::TESForm*, RE::TESObjectREFR*, std::int32_t);
 		using FnActivateRef = bool(__fastcall*)(RE::TESObjectREFR*, RE::TESObjectREFR*, RE::TESBoundObject*, int, bool, bool, bool);
@@ -122,15 +94,8 @@ namespace AW::Hooks
 		using FnUseObject = bool(__fastcall*)(
 			RE::ActorEquipManager*,
 			RE::Actor*,
-			const RE::BGSObjectInstance&,
-			std::uint32_t,
-			std::uint32_t,
-			const RE::BGSEquipSlot*,
-			bool,
-			bool,
-			bool,
-			bool,
-			bool);
+			const RE::BGSObjectInstance*,
+			void*);
 		using FnSetInputDeviceLightState = void(__fastcall*)(RE::BSInputDeviceManager*, std::uint32_t, bool);
 		using FnProcessGraphEvent = RE::BSEventNotifyControl(__fastcall*)(
 			RE::BSTEventSink<RE::BSAnimationGraphEvent>*,
@@ -145,10 +110,6 @@ namespace AW::Hooks
 		FnSetInputDeviceLightState g_origSetInputDeviceLightState{ nullptr };
 		FnProcessGraphEvent g_origProcessGraphEvent{ nullptr };
 
-		// -------------------------------------------------------------------
-		// Helpers
-		// -------------------------------------------------------------------
-
 		[[nodiscard]] RE::TESObjectREFR* CreateDummyReference()
 		{
 			auto* factory =
@@ -156,17 +117,16 @@ namespace AW::Hooks
 			return factory ? factory->Create() : nullptr;
 		}
 
-		// Resolves the plugin's forms once.  Returns false while the data
-		// handler is not up yet or the esp is missing, and the hooks then do
-		// nothing rather than dereferencing null actions.
 		bool EnsureFormsResolved()
 		{
 			if (g_formsReady) {
 				return true;
 			}
 
+			logger::debug("resolving plugin forms");
 			auto* dataHandler = RE::TESDataHandler::GetSingleton();
 			if (!dataHandler) {
+				logger::debug("plugin forms unavailable: TESDataHandler is null");
 				return false;
 			}
 
@@ -212,6 +172,17 @@ namespace AW::Hooks
 					g_idleStopFixKeyword != nullptr,
 					g_globalPipboyEquipAnims != nullptr);
 			}
+			logger::debug(
+				"form resolution ready={} playerTarget={} npcTarget={} activate={} itemAdded={} equip={} flashlight={} keyword={} pipboyGlobal={}",
+				g_formsReady,
+				g_playerTarget != nullptr,
+				g_npcTarget != nullptr,
+				g_actionActivate != nullptr,
+				g_actionItemAdded != nullptr,
+				g_actionEquipAnim != nullptr,
+				g_actionFlashlight != nullptr,
+				g_idleStopFixKeyword != nullptr,
+				g_globalPipboyEquipAnims != nullptr);
 
 			return g_formsReady;
 		}
@@ -220,6 +191,7 @@ namespace AW::Hooks
 		{
 			g_idleStopFixArmed = true;
 			g_idleStopFixExpiry = Clock::now() + IDLE_STOP_TIMEOUT;
+			logger::debug("idle-stop fix armed");
 		}
 
 		void ArmAnimation()
@@ -262,17 +234,13 @@ namespace AW::Hooks
 			return ui && ui->GetMenuOpen(RE::BSFixedString{ MENU_PIPBOY });
 		}
 
-		// -------------------------------------------------------------------
-		// BSTEventSink<BSAnimationGraphEvent>::ProcessEvent, patched into the
-		// player's vtable.  No address id needed - the sink slot index is part
-		// of the interface, so this works on every runtime.
-		// -------------------------------------------------------------------
 		RE::BSEventNotifyControl HookedProcessGraphEvent(
 			RE::BSTEventSink<RE::BSAnimationGraphEvent>* a_this,
 			const RE::BSAnimationGraphEvent& a_event,
 			RE::BSTEventSource<RE::BSAnimationGraphEvent>* a_source)
 		{
 			if (!g_origProcessGraphEvent) {
+				logger::debug("animation graph event hook has no original function");
 				return RE::BSEventNotifyControl::kContinue;
 			}
 
@@ -281,6 +249,11 @@ namespace AW::Hooks
 				static_cast<RE::BSTEventSink<RE::BSAnimationGraphEvent>*>(player) == a_this) {
 				const auto* tag = a_event.animEvent.c_str();
 				const auto event = tag ? std::string_view{ tag } : std::string_view{};
+				logger::debug(
+					"animation graph event={} idleStopArmed={} reopenPipboy={}",
+					event,
+					g_idleStopFixArmed,
+					g_reopenPipboy);
 
 				if (event == EVENT_IDLE_STOP && g_idleStopFixArmed) {
 					const bool holdsFixedItem =
@@ -311,6 +284,7 @@ namespace AW::Hooks
 
 			auto* player = RE::PlayerCharacter::GetSingleton();
 			if (!player || !player->GetFullyLoaded3D()) {
+				logger::debug("animation graph hook waiting for loaded player 3D");
 				return;
 			}
 
@@ -325,12 +299,12 @@ namespace AW::Hooks
 				return;
 			}
 
-			// Slot 0 is the destructor, slot 1 is ProcessEvent.
 			constexpr std::size_t PROCESS_EVENT_SLOT = 1;
 
 			g_origProcessGraphEvent =
 				reinterpret_cast<FnProcessGraphEvent>(vtable[PROCESS_EVENT_SLOT]);
 			if (!g_origProcessGraphEvent) {
+				logger::debug("animation graph hook has no original vtable entry");
 				return;
 			}
 
@@ -341,10 +315,6 @@ namespace AW::Hooks
 			g_graphEventHooked = true;
 			logger::info("player animation graph event sink hooked");
 		}
-
-		// -------------------------------------------------------------------
-		// Hooks
-		// -------------------------------------------------------------------
 
 		void __fastcall HookedRunActorUpdates(void* a_this)
 		{
@@ -367,8 +337,6 @@ namespace AW::Hooks
 
 			const auto now = Clock::now();
 
-			// An armed IdleStop fix that never saw its event must not survive
-			// into an unrelated animation.
 			if (g_idleStopFixArmed && now >= g_idleStopFixExpiry) {
 				g_idleStopFixArmed = false;
 			}
@@ -378,6 +346,7 @@ namespace AW::Hooks
 					logger::info("[aw] pending animation timed out without a usable clip");
 				}
 				g_animationPending = false;
+				g_itemFromGround = false;
 				ClearPendingSwap();
 			}
 
@@ -396,12 +365,6 @@ namespace AW::Hooks
 						clip.durationKnown);
 				}
 
-				// These two conditions are NOT mutually exclusive, and the
-				// order matters: a playing DynamicIdle wins over the ground
-				// shortcut.  The pickup/activate animation has to finish before
-				// the item-added animation starts, otherwise the new action is
-				// fired into a still-running idle and is swallowed - which looks
-				// exactly like "no animation played".
 				bool arm = false;
 				auto delay = GROUND_PICKUP_DELAY;
 				const char* reason = "";
@@ -424,17 +387,12 @@ namespace AW::Hooks
 						delay = remaining.count() > 0 ? remaining : DYNAMIC_IDLE_TAIL;
 						reason = "DynamicIdle";
 					} else {
-						// The clip is identified but not yet timeable.  Keep
-						// polling instead of cutting the animation short; the
-						// binding normally resolves within a frame or two.
 						arm = false;
 						reason = "";
 					}
 				}
 
 				if (!arm && !Game::CanReadClipInfo()) {
-					// Struct layout unverified on this runtime, so the clip walk
-					// is disabled.  Use a fixed delay rather than never firing.
 					arm = true;
 					delay = CLIP_UNREADABLE_FALLBACK;
 					reason = "clip walk unavailable";
@@ -442,6 +400,7 @@ namespace AW::Hooks
 
 				if (arm) {
 					g_animationPending = false;
+					g_itemFromGround = false;
 					g_animationSoon = true;
 					g_animationReady = now + delay;
 					if (g_trace) {
@@ -499,11 +458,20 @@ namespace AW::Hooks
 			bool a_silent,
 			bool a_other)
 		{
+			logger::debug(
+				"ActivateRef target={} activator={} item={} count={} force={} silent={}",
+				a_target ? a_target->formID : 0,
+				a_activator ? a_activator->formID : 0,
+				a_item ? a_item->formID : 0,
+				a_count,
+				a_force,
+				a_silent);
 			const auto callOriginal = [&] {
 				return g_origActivateRef(a_target, a_activator, a_item, a_count, a_force, a_silent, a_other);
 			};
 
 			if (Game::IsActivationBlocked(a_target)) {
+				logger::debug("ActivateRef skipped because activation is blocked");
 				return callOriginal();
 			}
 
@@ -519,6 +487,7 @@ namespace AW::Hooks
 					g_itemFromGround = true;
 				}
 			}
+			logger::debug("ActivateRef animation armed fromGround={}", g_itemFromGround);
 
 			return callOriginal();
 		}
@@ -530,15 +499,21 @@ namespace AW::Hooks
 			RE::TESObjectREFR* a_container,
 			std::int32_t a_acquireType)
 		{
+			logger::debug(
+				"AddAcquiredEvent player={} item={} source={} container={} acquireType={}",
+				a_player ? a_player->formID : 0,
+				a_item ? a_item->formID : 0,
+				a_source ? a_source->formID : 0,
+				a_container ? a_container->formID : 0,
+				a_acquireType);
 			const auto callOriginal = [&] {
 				g_origAddAcquiredEvent(a_player, a_item, a_source, a_container, a_acquireType);
 			};
 
 			auto* player = RE::PlayerCharacter::GetSingleton();
 
-			// The original fell through this guard without returning, then went
-			// on to use the null pointers it had just rejected.
 			if (!player || !a_item || !EnsureFormsResolved() || !g_playerTarget || !g_actionActivate) {
+				logger::debug("AddAcquiredEvent skipped because required state is unavailable");
 				callOriginal();
 				return;
 			}
@@ -569,6 +544,11 @@ namespace AW::Hooks
 			std::uint32_t a_count)
 		{
 			auto* player = RE::PlayerCharacter::GetSingleton();
+			logger::debug(
+				"HandlePlayerItem item={} count={} loaded3D={}",
+				a_item ? a_item->formID : 0,
+				a_count,
+				player && player->GetFullyLoaded3D());
 
 			if (g_trace) {
 				logger::info(
@@ -586,6 +566,10 @@ namespace AW::Hooks
 				g_pendingSwapItem = g_pendingSwap ? a_item : nullptr;
 
 				ArmAnimation();
+				logger::debug(
+					"HandlePlayerItem queued animation item={} swap={}",
+					a_item->formID,
+					g_pendingSwap != nullptr);
 			}
 
 			g_origHandlePlayerItem(a_item, a_extra, a_count);
@@ -594,26 +578,23 @@ namespace AW::Hooks
 		bool __fastcall HookedUseObject(
 			RE::ActorEquipManager* a_this,
 			RE::Actor* a_actor,
-			const RE::BGSObjectInstance& a_object,
-			std::uint32_t a_stackID,
-			std::uint32_t a_number,
-			const RE::BGSEquipSlot* a_slot,
-			bool a_queueEquip,
-			bool a_forceEquip,
-			bool a_playSounds,
-			bool a_applyNow,
-			bool a_locked)
+			const RE::BGSObjectInstance* a_object,
+			void* a_params)
 		{
+			logger::debug(
+				"UseObject actor={} object={} params={}",
+				a_actor ? a_actor->formID : 0,
+				a_object && a_object->object ? a_object->object->formID : 0,
+				a_params != nullptr);
 			const auto callOriginal = [&] {
-				return g_origUseObject(
-					a_this, a_actor, a_object, a_stackID, a_number, a_slot,
-					a_queueEquip, a_forceEquip, a_playSounds, a_applyNow, a_locked);
+				return g_origUseObject(a_this, a_actor, a_object, a_params);
 			};
 
 			auto* player = RE::PlayerCharacter::GetSingleton();
-			auto* baseForm = static_cast<RE::TESBoundObject*>(a_object.object);
+			auto* baseForm = a_object ? static_cast<RE::TESBoundObject*>(a_object->object) : nullptr;
 
 			if (!a_actor || !player || !baseForm || !a_actor->GetFullyLoaded3D()) {
+				logger::debug("UseObject skipped because actor, object, player, or 3D is unavailable");
 				return callOriginal();
 			}
 
@@ -622,6 +603,11 @@ namespace AW::Hooks
 				baseForm->formType == RE::ENUM_FORM_ID::kARMO;
 
 			if (!animatable || !EnsureFormsResolved() || !g_actionEquipAnim) {
+				logger::debug(
+					"UseObject skipped animatable={} formsReady={} actionReady={}",
+					animatable,
+					g_formsReady,
+					g_actionEquipAnim != nullptr);
 				return callOriginal();
 			}
 
@@ -633,8 +619,6 @@ namespace AW::Hooks
 						const bool enabled =
 							g_globalPipboyEquipAnims && g_globalPipboyEquipAnims->value > 0.0f;
 
-						// Playing the equip animation tears the Pip-Boy down, so
-						// only do it if we can put it back afterwards.
 						if (enabled && Game::CanReopenPipboy()) {
 							static_cast<void>(Game::PlayAction(player, g_actionEquipAnim, g_playerTarget));
 							g_reopenPipboy = true;
@@ -656,10 +640,9 @@ namespace AW::Hooks
 			std::uint32_t a_state,
 			bool a_on)
 		{
+			logger::debug("SetInputDeviceLightState state={} on={}", a_state, a_on);
 			auto* player = RE::PlayerCharacter::GetSingleton();
 
-			// The original fired the flashlight animation unconditionally, which
-			// includes calls made while the player has no 3D (loading, main menu).
 			if (player && player->GetFullyLoaded3D() && EnsureFormsResolved() && g_actionFlashlight) {
 				ArmIdleStopFix();
 				static_cast<void>(Game::PlayAction(player, g_actionFlashlight, player));
@@ -668,15 +651,14 @@ namespace AW::Hooks
 			g_origSetInputDeviceLightState(a_manager, a_state, a_on);
 		}
 
-		// -------------------------------------------------------------------
-		// Installation
-		// -------------------------------------------------------------------
-
 		template <class F>
 		[[nodiscard]] bool InstallCall(Addresses::Site a_site, F& a_original, F a_hook)
 		{
 			const auto address = Addresses::ResolveSite(a_site);
 			if (!address) {
+				return false;
+			}
+			if (!Addresses::ValidateSite(a_site, *address)) {
 				return false;
 			}
 
@@ -693,23 +675,57 @@ namespace AW::Hooks
 			if (!address) {
 				return false;
 			}
+			if (!Addresses::ValidateSite(a_site, *address)) {
+				return false;
+			}
 
 			auto& trampoline = F4SE::GetTrampoline();
 			a_original = reinterpret_cast<F>(trampoline.write_branch<5>(*address, a_hook));
 			logger::info("installed {} hook", Addresses::GetSite(a_site).name);
 			return true;
 		}
+
+		template <class F>
+		[[nodiscard]] bool InstallEntry(Addresses::Site a_site, F& a_original, F a_hook)
+		{
+			if (a_site != Addresses::Site::kUseObject) {
+				return false;
+			}
+			a_original = nullptr;
+
+			const auto& site = Addresses::GetSite(a_site);
+			const auto address = Addresses::ResolveUseObjectEntry();
+			if (!address) {
+				return false;
+			}
+
+			void* rawOriginal{ nullptr };
+			if (!EntryHooks::Install(
+				*address,
+				reinterpret_cast<void*>(a_hook),
+				&rawOriginal) ||
+				!rawOriginal) {
+				return false;
+			}
+
+			a_original = reinterpret_cast<F>(rawOriginal);
+			logger::info(
+				"installed {} entry hook runtime={} rva={:#x}",
+				site.name,
+				REL::Module::get().version().string(),
+				*address - REL::Module::get().base());
+			return true;
+		}
+
 	}
 
 	bool Install()
 	{
-		g_trace = Diagnostics::HookTraceEnabled();
+		g_trace = Config::DebugLoggingEnabled();
 		if (g_trace) {
 			logger::info("[aw] hook tracing enabled");
 		}
 
-		// Without the per-frame driver none of the timed follow-ups can run, so
-		// there is no point installing anything else.
 		if (!InstallCall(Addresses::Site::kRunActorUpdates, g_origRunActorUpdates, &HookedRunActorUpdates)) {
 			logger::error("RunActorUpdates hook unavailable - AnimatedWorld will stay inactive");
 			return false;
@@ -721,11 +737,17 @@ namespace AW::Hooks
 		static_cast<void>(InstallCall(
 			Addresses::Site::kHandlePlayerItem, g_origHandlePlayerItem, &HookedHandlePlayerItem));
 
-		static_cast<void>(InstallCall(
-			Addresses::Site::kUseObject, g_origUseObject, &HookedUseObject));
+		if (REL::runtime_family(REL::Module::get().version()) == REL::RuntimeFamily::kOG) {
+			static_cast<void>(InstallCall(
+				Addresses::Site::kUseObject, g_origUseObject, &HookedUseObject));
+		} else if (Addresses::IsVerifiedUseObjectRuntime()) {
+			if (!InstallEntry(Addresses::Site::kUseObject, g_origUseObject, &HookedUseObject)) {
+				logger::warn("UseObject entry hook unavailable - feature remains disabled");
+			}
+		} else {
+			logger::warn("UseObject hook skipped: runtime version is not verified");
+		}
 
-		// Activation needs the blocked-ref test; without it the hook would fire
-		// the animation on references the game refuses to activate.
 		if (Game::CanTestActivationBlocked()) {
 			static_cast<void>(InstallCall(
 				Addresses::Site::kActivateRef, g_origActivateRef, &HookedActivateRef));

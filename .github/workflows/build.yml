@@ -1,0 +1,43 @@
+name: Build
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  windows-release:
+    runs-on: windows-2022
+
+    steps:
+      - name: Check out AnimatedWorld
+        uses: actions/checkout@v4
+
+      - name: Check out pinned CommonLibF4RD
+        shell: pwsh
+        run: |
+          git clone https://github.com/Zzyxz/CommonLibF4RD.git external/CommonLibF4RD
+          git -C external/CommonLibF4RD checkout 8a1da09250c16ac909de2bca94c8a66a4e7fd956
+
+      - name: Fetch pinned vcpkg baseline
+        shell: pwsh
+        run: |
+          git -C "$env:VCPKG_INSTALLATION_ROOT" fetch --no-tags origin e6f9e70a29a3e80a1fc510d8503304315447112f
+          git -C "$env:VCPKG_INSTALLATION_ROOT" checkout --detach e6f9e70a29a3e80a1fc510d8503304315447112f
+
+      - name: Configure
+        shell: pwsh
+        run: |
+          cmake -S . -B build/ci -G "Visual Studio 17 2022" -A x64 `
+            -DCOMMONLIBF4RD_PATH="$pwd/external/CommonLibF4RD"
+
+      - name: Build
+        shell: pwsh
+        run: cmake --build build/ci --config Release --parallel
+
+      - name: Publish Release DLL
+        uses: actions/upload-artifact@v4
+        with:
+          name: AnimatedWorld-${{ github.event.pull_request.head.sha || github.sha }}
+          path: build/ci/Release/AnimatedWorld.dll
+          if-no-files-found: error
+          retention-days: 14

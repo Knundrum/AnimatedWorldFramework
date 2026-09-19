@@ -10,7 +10,6 @@ namespace AW::Diagnostics
 	namespace
 	{
 		constexpr auto CALLSITE_MARKER_NAME = "AnimatedWorld.findcallsites";
-		constexpr auto TRACE_MARKER_NAME = "AnimatedWorld.tracehooks";
 
 		constexpr std::uint8_t OPCODE_CALL_REL32 = 0xE8;
 		constexpr std::uint8_t OPCODE_JMP_REL32 = 0xE9;
@@ -23,7 +22,6 @@ namespace AW::Diagnostics
 			bool valid{ false };
 		};
 
-		// Decodes the E8/E9 rel32 that a write_call/write_branch hook replaces.
 		[[nodiscard]] Branch DecodeBranch(std::uintptr_t a_site)
 		{
 			const auto* bytes = reinterpret_cast<const std::uint8_t*>(a_site);
@@ -50,11 +48,6 @@ namespace AW::Diagnostics
 			return branch;
 		}
 
-		// Reverse lookup: RVA -> Runtime Database id.
-		//
-		// REL::IDDatabase::Offset2ID::operator() calls stl::report_and_fail when
-		// an offset is not a known function start, which would take the game
-		// down.  Search the sorted container directly instead.
 		class ReverseLookup
 		{
 		public:
@@ -100,13 +93,6 @@ namespace AW::Diagnostics
 	bool CallsiteDumpRequested()
 	{
 		return MarkerExists(CALLSITE_MARKER_NAME);
-	}
-
-	bool HookTraceEnabled()
-	{
-		// Checked once; the marker is not meant to be toggled mid-session.
-		static const bool enabled = MarkerExists(TRACE_MARKER_NAME);
-		return enabled;
 	}
 
 	void DumpCallsiteTargets()
