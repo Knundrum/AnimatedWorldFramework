@@ -99,6 +99,22 @@ if (NOT TARGET CommonLibF4)
 		)
 	endif ()
 
+	set(COMMONLIBF4RD_COMMIT "8a1da09250c16ac909de2bca94c8a66a4e7fd956" CACHE STRING
+		"Pinned CommonLibF4RD commit")
+	find_package(Git REQUIRED)
+	execute_process(
+		COMMAND "${GIT_EXECUTABLE}" -C "${_commonlibf4rd_root}" rev-parse HEAD
+		OUTPUT_VARIABLE _commonlibf4rd_head
+		OUTPUT_STRIP_TRAILING_WHITESPACE
+		RESULT_VARIABLE _commonlibf4rd_git_result
+	)
+	if (NOT _commonlibf4rd_git_result EQUAL 0 OR NOT "${_commonlibf4rd_head}" STREQUAL "${COMMONLIBF4RD_COMMIT}")
+		message(
+			FATAL_ERROR
+			"CommonLibF4RD must be checked out at ${COMMONLIBF4RD_COMMIT}; found '${_commonlibf4rd_head}'."
+		)
+	endif ()
+
 	add_subdirectory("${_commonlibf4rd_root}/CommonLibF4" CommonLibF4)
 endif ()
 

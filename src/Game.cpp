@@ -4,6 +4,7 @@
 
 #include "RE/Bethesda/PlayerCharacter.h"
 #include "RE/Havok/hkArray.h"
+#include "RE/VTABLE_IDs.h"
 
 namespace AW::Game
 {
@@ -53,7 +54,7 @@ namespace AW::Game
 			.cacheGraphToCacheFor = 0x38,
 			.graphBehaviorGraph = 0x378,
 			.behaviorActiveNodes = 0xE0,
-			.clipUserData = 0x08,
+			.clipUserData = 0x30,
 			.clipName = 0x38,
 			.clipLocalTime = 0x140,
 			.clipAnimationControl = 0xD0,
@@ -65,9 +66,27 @@ namespace AW::Game
 
 		constexpr AnimGraphLayout kLayoutNG = kLayoutOG;
 		constexpr AnimGraphLayout kLayoutAE = kLayoutOG;
+		constexpr AnimGraphLayout kLayoutUnverified{
+			.managerVariableCache = 0,
+			.cacheGraphToCacheFor = 0,
+			.graphBehaviorGraph = 0,
+			.behaviorActiveNodes = 0,
+			.clipUserData = 0,
+			.clipName = 0,
+			.clipLocalTime = 0,
+			.clipAnimationControl = 0,
+			.controlBinding = 0,
+			.bindingAnimation = 0,
+			.animationDuration = 0,
+			.verified = false
+		};
 
 		[[nodiscard]] const AnimGraphLayout& CurrentLayout() noexcept
 		{
+			if (!Addresses::IsVerifiedRuntime()) {
+				return kLayoutUnverified;
+			}
+
 			switch (REL::runtime_family(REL::Module::get().version())) {
 			case REL::RuntimeFamily::kOG:
 				return kLayoutOG;
@@ -79,7 +98,14 @@ namespace AW::Game
 			}
 		}
 
-		constexpr std::size_t MAX_ACTIVE_GENERATORS = 512;
+		constexpr std::size_t MAX_ACTIVE_NODES = 512;
+
+		struct ActiveNodeInfo
+		{
+			std::uint8_t unknown[0x58];
+			const void* nodeClone;
+		};
+		static_assert(offsetof(ActiveNodeInfo, nodeClone) == 0x58);
 
 		template <class T>
 		[[nodiscard]] T ReadAt(const void* a_base, std::ptrdiff_t a_offset) noexcept
@@ -226,6 +252,12 @@ namespace AW::Game
 			return false;
 		}
 
+		static const auto clipGeneratorVTable =
+			Addresses::ResolveFunction("hkbClipGenerator vtable"sv, RE::VTABLE::hkbClipGenerator.front());
+		if (!clipGeneratorVTable) {
+			return false;
+		}
+
 		const auto* process = a_actor->currentProcess;
 		if (!process || !process->middleHigh) {
 			return false;
@@ -246,14 +278,9 @@ namespace AW::Game
 			return false;
 		}
 
-		using NodeArray = RE::hkArray<void**>;
+		using NodeArray = RE::hkArray<ActiveNodeInfo*>;
 		const auto* activeNodes = ReadAt<const NodeArray*>(behaviorGraph, layout.behaviorActiveNodes);
 		if (!activeNodes || activeNodes->_size <= 0 || !activeNodes->_data) {
-			return false;
-		}
-
-		void** generator = *activeNodes->_data;
-		if (!generator) {
 			return false;
 		}
 
@@ -261,10 +288,20 @@ namespace AW::Game
 		std::string lastName;
 		float lastTime = 0.0f;
 
-		for (std::size_t i = 0; i < MAX_ACTIVE_GENERATORS && *generator; ++i, ++generator) {
-			const auto* clip = *generator;
+		for (std::int32_t i = 0;
+			i < activeNodes->_size && i < static_cast<std::int32_t>(MAX_ACTIVE_NODES);
+			++i) {
+			const auto* nodeInfo = activeNodes->_data[i];
+			if (!nodeInfo || !nodeInfo->nodeClone) {
+				continue;
+			}
 
-			if (ReadAt<std::uint32_t>(clip, layout.clipUserData) == 0) {
+			const auto* clip = nodeInfo->nodeClone;
+			if (ReadAt<const void*>(clip, 0) != reinterpret_cast<const void*>(*clipGeneratorVTable)) {
+				continue;
+			}
+
+			if (ReadAt<std::uint64_t>(clip, layout.clipUserData) == 0) {
 				continue;
 			}
 

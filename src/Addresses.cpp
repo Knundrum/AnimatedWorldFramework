@@ -61,6 +61,14 @@ namespace AW::Addresses
 		return IDForRuntime(a_id) != REL::ID::INVALID_ID;
 	}
 
+	bool IsVerifiedRuntime() noexcept
+	{
+		const auto version = REL::Module::get().version();
+		return version == REL::Version{ 1, 10, 163, 0 } ||
+		       version == REL::Version{ 1, 10, 984, 0 } ||
+		       version == REL::Version{ 1, 11, 240, 0 };
+	}
+
 	std::optional<std::uintptr_t> ResolveFunction(std::string_view a_name, const REL::ID& a_id)
 	{
 		if (!HasIDForRuntime(a_id)) {
@@ -142,6 +150,54 @@ namespace AW::Addresses
 		}
 
 		return address;
+	}
+
+	bool ValidateSite(Site a_site, std::uintptr_t a_address)
+	{
+		const auto& site = GetSite(a_site);
+		const auto expectedOpcode =
+			site.branch == REL::AutoCallsiteBranch::kJump ? std::uint8_t{ 0xE9 } : std::uint8_t{ 0xE8 };
+		const auto* bytes = reinterpret_cast<const std::uint8_t*>(a_address);
+
+		if (bytes[0] != expectedOpcode) {
+			logger::error(
+				"{}: refusing hook at {:#x}: expected {:#04x}, found {:#04x}",
+				site.name,
+				a_address,
+				expectedOpcode,
+				bytes[0]);
+			return false;
+		}
+
+		if (!HasIDForRuntime(site.callsiteTarget)) {
+			return true;
+		}
+
+		const auto target = REL::IDDatabase::get().resolve(IsolateForRuntime(site.callsiteTarget));
+		if (!target) {
+			logger::error(
+				"{}: refusing hook because target id {} cannot be resolved ({})",
+				site.name,
+				IDForRuntime(site.callsiteTarget),
+				REL::id_resolve_status_text(target.status));
+			return false;
+		}
+
+		std::int32_t displacement{ 0 };
+		std::memcpy(std::addressof(displacement), bytes + 1, sizeof(displacement));
+		const auto actualTarget = a_address + 5 + static_cast<std::intptr_t>(displacement);
+		const auto expectedTarget = REL::Module::get().base() + *target.rva;
+		if (actualTarget != expectedTarget) {
+			logger::error(
+				"{}: refusing hook at {:#x}: target {:#x} does not match expected {:#x}",
+				site.name,
+				a_address,
+				actualTarget,
+				expectedTarget);
+			return false;
+		}
+
+		return true;
 	}
 
 	void LogCapabilityReport()

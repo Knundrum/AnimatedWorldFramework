@@ -1,0 +1,31 @@
+name: Build
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  windows-release:
+    runs-on: windows-latest
+
+    steps:
+      - name: Check out AnimatedWorld
+        uses: actions/checkout@v4
+
+      - name: Check out pinned CommonLibF4RD
+        shell: pwsh
+        run: |
+          git clone https://github.com/Zzyxz/CommonLibF4RD.git external/CommonLibF4RD
+          git -C external/CommonLibF4RD checkout 8a1da09250c16ac909de2bca94c8a66a4e7fd956
+
+      - name: Configure
+        shell: pwsh
+        run: |
+          cmake -S . -B build/ci -G "Visual Studio 17 2022" -A x64 `
+            -DCMAKE_TOOLCHAIN_FILE="$env:VCPKG_ROOT/scripts/buildsystems/vcpkg.cmake" `
+            -DVCPKG_TARGET_TRIPLET=x64-windows-static-md `
+            -DCOMMONLIBF4RD_PATH="$pwd/external/CommonLibF4RD"
+
+      - name: Build
+        shell: pwsh
+        run: cmake --build build/ci --config Release --parallel

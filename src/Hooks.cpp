@@ -345,6 +345,7 @@ namespace AW::Hooks
 					logger::info("[aw] pending animation timed out without a usable clip");
 				}
 				g_animationPending = false;
+				g_itemFromGround = false;
 				ClearPendingSwap();
 			}
 
@@ -398,6 +399,7 @@ namespace AW::Hooks
 
 				if (arm) {
 					g_animationPending = false;
+					g_itemFromGround = false;
 					g_animationSoon = true;
 					g_animationReady = now + delay;
 					if (g_trace) {
@@ -655,6 +657,9 @@ namespace AW::Hooks
 			if (!address) {
 				return false;
 			}
+			if (!Addresses::ValidateSite(a_site, *address)) {
+				return false;
+			}
 
 			auto& trampoline = F4SE::GetTrampoline();
 			a_original = reinterpret_cast<F>(trampoline.write_call<5>(*address, a_hook));
@@ -669,6 +674,9 @@ namespace AW::Hooks
 			if (!address) {
 				return false;
 			}
+			if (!Addresses::ValidateSite(a_site, *address)) {
+				return false;
+			}
 
 			auto& trampoline = F4SE::GetTrampoline();
 			a_original = reinterpret_cast<F>(trampoline.write_branch<5>(*address, a_hook));
@@ -676,22 +684,6 @@ namespace AW::Hooks
 			return true;
 		}
 
-		template <class F>
-		[[nodiscard]] bool InstallFunction(
-			std::string_view a_name,
-			const REL::ID& a_id,
-			F& a_original,
-			F a_hook)
-		{
-			const auto address = Addresses::ResolveFunction(a_name, a_id);
-			if (!address) {
-				return false;
-			}
-
-			a_original = reinterpret_cast<F>(F4SE::GetTrampoline().write_branch<5>(*address, a_hook));
-			logger::info("installed {} entry hook", a_name);
-			return true;
-		}
 	}
 
 	bool Install()
@@ -712,13 +704,11 @@ namespace AW::Hooks
 		static_cast<void>(InstallCall(
 			Addresses::Site::kHandlePlayerItem, g_origHandlePlayerItem, &HookedHandlePlayerItem));
 
-		const auto& useObjectSite = Addresses::GetSite(Addresses::Site::kUseObject);
 		if (REL::runtime_family(REL::Module::get().version()) == REL::RuntimeFamily::kOG) {
 			static_cast<void>(InstallCall(
 				Addresses::Site::kUseObject, g_origUseObject, &HookedUseObject));
 		} else {
-			static_cast<void>(InstallFunction(
-				"UseObject"sv, useObjectSite.callsiteTarget, g_origUseObject, &HookedUseObject));
+			logger::warn("UseObject hook skipped on NG/AE: entry trampoline is not verified");
 		}
 
 		if (Game::CanTestActivationBlocked()) {

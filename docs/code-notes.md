@@ -44,7 +44,7 @@ Hook-site facts:
 - `AddAcquiredEvent` is the player item-acquired event. Its OG callee is ID `876119`, RVA `0xe9f220`, and is unnamed in CommonLibF4RD.
 - `ActivateRef` has owner `785533`. Its verified callsite is `+0x38A` on OG and `+0x31D` on NG/AE. The callee is OG ID `753531`, named `TESObjectREFR::ActivateRef` with AE ID `2201147`. Automatic resolution is active for this site; the fixed OG offset remains the fallback. If activation animations break, the callsite target can be removed and the log will show whether automatic resolution or fallback was used.
 - `HandlePlayerItem` is inside `TESObjectREFR::AddInventoryItem`, OG ID `78185`, NG/AE ID `2200949`, at `+0xA40` on OG and `+0xA4A` on NG/AE. Its callee is OG ID `357079`, NG/AE ID `2194003`, with NG RVA `0x2f30d0` and AE RVA `0x3477c0`.
-- On OG, `EquipObject` calls `UseObject` at `+0x15A`. On NG/AE, `EquipObject +0xE0` calls `GetDesiredEquipSlot`; the real `UseObject` entry is not a direct callsite, so NG/AE use the verified entry hook. `UseObject` is OG ID `301794`, RVA `0xe1d100`, and NG/AE ID `2231408`, with NG RVA `0xc61490` and AE RVA `0xce7460`. It is unnamed in CommonLibF4RD.
+- On OG, `EquipObject` calls `UseObject` at `+0x15A`. On NG/AE, `EquipObject +0xE0` calls `GetDesiredEquipSlot`; the real `UseObject` entry is not a direct callsite. The NG/AE entry hook is intentionally disabled until a real prologue trampoline is verified. `UseObject` is OG ID `301794`, RVA `0xe1d100`, and NG/AE ID `2231408`, with NG RVA `0xc61490` and AE RVA `0xce7460`. It is unnamed in CommonLibF4RD.
 - `SetInputDeviceLightState` is inside `PlayerCharacter::TogglePipBoyLight`, OG ID `520007`, AE ID `2233201`. The callsite dump identifies an E9 tail-call jump. Its OG callee is ID `157452`, RVA `0x1b2c080`, and is unnamed in CommonLibF4RD.
 
 Address resolution returns `std::nullopt` instead of calling `stl::report_and_fail` when an optional ID cannot be resolved. Optional `REL::Relocation` constructors are avoided because they terminate the process on failure.
@@ -57,7 +57,7 @@ All wrappers are optional. If an address cannot be resolved on the running runti
 
 `PlayAction` has the signature `PlayAction(Actor*, BGSAction*, TESObjectREFR*, void*, uint32_t)` at the engine boundary.
 
-Clip timing walks raw Havok structures by byte offset. Runtime-aware addresses do not make class layouts portable; CommonLibF4RD's `structureIndependence` caveat still applies. Offsets are trusted only on verified runtime families. On unverified layouts, `ReadCurrentClip()` fails and the caller uses a fixed delay instead of dereferencing guesses.
+Clip timing walks raw Havok structures by byte offset. Runtime-aware addresses do not make class layouts portable; CommonLibF4RD's `structureIndependence` caveat still applies. The active-node member is an `hkArray<hkbNodeInfo*>*`; each entry is followed to its node clone, filtered by the resolved `hkbClipGenerator` vtable, and then read through the verified `hkbNode` fields. Offsets are trusted only on exact verified runtimes `1.10.163.0`, `1.10.984.0`, and `1.11.240.0`. On other versions, `ReadCurrentClip()` fails and the caller uses a fixed delay instead of dereferencing guesses.
 
 An active generator may be identified by name before its animation binding is reachable. In that state `name` is trustworthy but `duration` is not, so callers must not compute remaining time from it.
 
