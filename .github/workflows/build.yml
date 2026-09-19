@@ -18,6 +18,10 @@ jobs:
           git clone https://github.com/Zzyxz/CommonLibF4RD.git external/CommonLibF4RD
           git -C external/CommonLibF4RD checkout 8a1da09250c16ac909de2bca94c8a66a4e7fd956
 
+      - name: Fetch pinned vcpkg baseline
+        shell: pwsh
+        run: git -C "$env:VCPKG_INSTALLATION_ROOT" fetch --no-tags origin e6f9e70a29a3e80a1fc510d8503304315447112f
+
       - name: Configure
         shell: pwsh
         run: |
