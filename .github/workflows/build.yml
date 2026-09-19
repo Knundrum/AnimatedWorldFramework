@@ -20,7 +20,9 @@ jobs:
 
       - name: Fetch pinned vcpkg baseline
         shell: pwsh
-        run: git -C "$env:VCPKG_INSTALLATION_ROOT" fetch --no-tags origin e6f9e70a29a3e80a1fc510d8503304315447112f
+        run: |
+          git -C "$env:VCPKG_INSTALLATION_ROOT" fetch --no-tags origin e6f9e70a29a3e80a1fc510d8503304315447112f
+          git -C "$env:VCPKG_INSTALLATION_ROOT" checkout --detach e6f9e70a29a3e80a1fc510d8503304315447112f
 
       - name: Configure
         shell: pwsh
