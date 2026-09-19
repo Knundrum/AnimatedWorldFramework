@@ -33,3 +33,11 @@ jobs:
       - name: Build
         shell: pwsh
         run: cmake --build build/ci --config Release --parallel
+
+      - name: Publish Release DLL
+        uses: actions/upload-artifact@v4
+        with:
+          name: AnimatedWorld-${{ github.sha }}
+          path: build/ci/Release/AnimatedWorld.dll
+          if-no-files-found: error
+          retention-days: 14
