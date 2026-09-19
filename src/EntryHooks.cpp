@@ -48,6 +48,14 @@ namespace AW::EntryHooks
 			LogFailure("hook creation", createStatus);
 			return false;
 		}
+		if (!*a_original) {
+			logger::error("MinHook hook creation returned no original trampoline");
+			const auto removeStatus = MH_RemoveHook(target);
+			if (removeStatus != MH_OK) {
+				LogFailure("partial hook cleanup", removeStatus);
+			}
+			return false;
+		}
 
 		const auto enableStatus = MH_EnableHook(target);
 		if (enableStatus == MH_OK) {

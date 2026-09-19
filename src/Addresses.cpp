@@ -109,6 +109,45 @@ namespace AW::Addresses
 		return REL::Module::get().base() + *result.rva;
 	}
 
+	std::optional<std::uintptr_t> ResolveUseObjectEntry()
+	{
+		const auto version = REL::Module::get().version();
+		const auto family = CurrentFamily();
+		std::optional<std::uintptr_t> expectedRva;
+		if (family == REL::RuntimeFamily::kNG && version == REL::Version{ 1, 10, 984, 0 }) {
+			expectedRva = 0xC61490;
+		} else if (family == REL::RuntimeFamily::kAE && version == REL::Version{ 1, 11, 240, 0 }) {
+			expectedRva = 0xCE7460;
+		} else {
+			logger::error("UseObject entry rejected on unverified runtime {}", version.string());
+			return std::nullopt;
+		}
+
+		const auto& site = GetSite(Site::kUseObject);
+		const auto address = ResolveFunction(site.name, site.callsiteTarget);
+		if (!address) {
+			return std::nullopt;
+		}
+
+		const auto base = REL::Module::get().base();
+		if (*address < base) {
+			logger::error("UseObject entry resolved below module base on runtime {}", version.string());
+			return std::nullopt;
+		}
+
+		const auto actualRva = *address - base;
+		if (actualRva != *expectedRva) {
+			logger::error(
+				"UseObject entry RVA mismatch on {}: expected {:#x}, found {:#x}",
+				version.string(),
+				*expectedRva,
+				actualRva);
+			return std::nullopt;
+		}
+
+		return address;
+	}
+
 	std::optional<std::uintptr_t> ResolveSite(Site a_site)
 	{
 		const auto& site = GetSite(a_site);

@@ -54,6 +54,15 @@ FetchContent_Declare(
 )
 FetchContent_MakeAvailable(MinHook)
 
+if (NOT TARGET minhook)
+	message(FATAL_ERROR "MinHook target was not created")
+endif()
+get_target_property(_minhook_type minhook TYPE)
+if (NOT _minhook_type STREQUAL "STATIC_LIBRARY")
+	message(FATAL_ERROR "MinHook must be a STATIC_LIBRARY, found '${_minhook_type}'")
+endif()
+unset(_minhook_type)
+
 configure_file(
 	${CMAKE_CURRENT_SOURCE_DIR}/cmake/Version.h.in
 	${CMAKE_CURRENT_BINARY_DIR}/include/Version.h

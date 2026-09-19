@@ -688,16 +688,33 @@ namespace AW::Hooks
 		template <class F>
 		[[nodiscard]] bool InstallEntry(Addresses::Site a_site, F& a_original, F a_hook)
 		{
+			if (a_site != Addresses::Site::kUseObject) {
+				return false;
+			}
+			a_original = nullptr;
+
 			const auto& site = Addresses::GetSite(a_site);
-			const auto address = Addresses::ResolveFunction(site.name, site.callsiteTarget);
+			const auto address = Addresses::ResolveUseObjectEntry();
 			if (!address) {
 				return false;
 			}
 
-			return EntryHooks::Install(
+			void* rawOriginal{ nullptr };
+			if (!EntryHooks::Install(
 				*address,
 				reinterpret_cast<void*>(a_hook),
-				reinterpret_cast<void**>(std::addressof(a_original)));
+				&rawOriginal) ||
+				!rawOriginal) {
+				return false;
+			}
+
+			a_original = reinterpret_cast<F>(rawOriginal);
+			logger::info(
+				"installed {} entry hook runtime={} rva={:#x}",
+				site.name,
+				REL::Module::get().version().string(),
+				*address - REL::Module::get().base());
+			return true;
 		}
 
 	}

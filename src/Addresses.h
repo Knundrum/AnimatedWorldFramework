@@ -112,6 +112,8 @@ namespace AW::Addresses
 		std::string_view a_name,
 		const REL::ID& a_id);
 
+	[[nodiscard]] std::optional<std::uintptr_t> ResolveUseObjectEntry();
+
 	[[nodiscard]] std::optional<std::uintptr_t> ResolveSite(Site a_site);
 
 	[[nodiscard]] bool ValidateSite(Site a_site, std::uintptr_t a_address);
