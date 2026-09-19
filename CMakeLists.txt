@@ -44,6 +44,16 @@ project(
 	LANGUAGES CXX
 )
 
+include(FetchContent)
+
+FetchContent_Declare(
+	MinHook
+	GIT_REPOSITORY https://github.com/TsudaKageyu/minhook.git
+	GIT_TAG c3fcafdc10146beb5919319d0683e44e3c30d537
+	GIT_SHALLOW FALSE
+)
+FetchContent_MakeAvailable(MinHook)
+
 configure_file(
 	${CMAKE_CURRENT_SOURCE_DIR}/cmake/Version.h.in
 	${CMAKE_CURRENT_BINARY_DIR}/include/Version.h
@@ -185,6 +195,7 @@ target_link_libraries(
 	PRIVATE
 		CommonLibF4::CommonLibF4
 		fmt::fmt
+		minhook
 		spdlog::spdlog
 )
 

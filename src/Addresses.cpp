@@ -69,6 +69,14 @@ namespace AW::Addresses
 		       version == REL::Version{ 1, 11, 240, 0 };
 	}
 
+	bool IsVerifiedUseObjectRuntime() noexcept
+	{
+		const auto version = REL::Module::get().version();
+		const auto family = CurrentFamily();
+		return (family == REL::RuntimeFamily::kNG && version == REL::Version{ 1, 10, 984, 0 }) ||
+		       (family == REL::RuntimeFamily::kAE && version == REL::Version{ 1, 11, 240, 0 });
+	}
+
 	std::optional<std::uintptr_t> ResolveFunction(std::string_view a_name, const REL::ID& a_id)
 	{
 		if (!HasIDForRuntime(a_id)) {

@@ -5,6 +5,8 @@ set(SOURCES
 	src/Config.h
 	src/Diagnostics.cpp
 	src/Diagnostics.h
+	src/EntryHooks.cpp
+	src/EntryHooks.h
 	src/Game.cpp
 	src/Game.h
 	src/Hooks.cpp

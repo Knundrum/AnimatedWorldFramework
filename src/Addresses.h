@@ -106,6 +106,8 @@ namespace AW::Addresses
 
 	[[nodiscard]] bool IsVerifiedRuntime() noexcept;
 
+	[[nodiscard]] bool IsVerifiedUseObjectRuntime() noexcept;
+
 	[[nodiscard]] std::optional<std::uintptr_t> ResolveFunction(
 		std::string_view a_name,
 		const REL::ID& a_id);

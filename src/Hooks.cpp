@@ -3,6 +3,7 @@
 #include "Addresses.h"
 #include "Config.h"
 #include "Diagnostics.h"
+#include "EntryHooks.h"
 #include "Game.h"
 
 #include "RE/Bethesda/BSInputDeviceManager.h"
@@ -684,6 +685,21 @@ namespace AW::Hooks
 			return true;
 		}
 
+		template <class F>
+		[[nodiscard]] bool InstallEntry(Addresses::Site a_site, F& a_original, F a_hook)
+		{
+			const auto& site = Addresses::GetSite(a_site);
+			const auto address = Addresses::ResolveFunction(site.name, site.callsiteTarget);
+			if (!address) {
+				return false;
+			}
+
+			return EntryHooks::Install(
+				*address,
+				reinterpret_cast<void*>(a_hook),
+				reinterpret_cast<void**>(std::addressof(a_original)));
+		}
+
 	}
 
 	bool Install()
@@ -707,8 +723,12 @@ namespace AW::Hooks
 		if (REL::runtime_family(REL::Module::get().version()) == REL::RuntimeFamily::kOG) {
 			static_cast<void>(InstallCall(
 				Addresses::Site::kUseObject, g_origUseObject, &HookedUseObject));
+		} else if (Addresses::IsVerifiedUseObjectRuntime()) {
+			if (!InstallEntry(Addresses::Site::kUseObject, g_origUseObject, &HookedUseObject)) {
+				logger::warn("UseObject entry hook unavailable - feature remains disabled");
+			}
 		} else {
-			logger::warn("UseObject hook skipped on NG/AE: entry trampoline is not verified");
+			logger::warn("UseObject hook skipped: runtime version is not verified");
 		}
 
 		if (Game::CanTestActivationBlocked()) {

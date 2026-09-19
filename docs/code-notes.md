@@ -44,10 +44,12 @@ Hook-site facts:
 - `AddAcquiredEvent` is the player item-acquired event. Its OG callee is ID `876119`, RVA `0xe9f220`, and is unnamed in CommonLibF4RD.
 - `ActivateRef` has owner `785533`. Its verified callsite is `+0x38A` on OG and `+0x31D` on NG/AE. The callee is OG ID `753531`, named `TESObjectREFR::ActivateRef` with AE ID `2201147`. Automatic resolution is active for this site; the fixed OG offset remains the fallback. If activation animations break, the callsite target can be removed and the log will show whether automatic resolution or fallback was used.
 - `HandlePlayerItem` is inside `TESObjectREFR::AddInventoryItem`, OG ID `78185`, NG/AE ID `2200949`, at `+0xA40` on OG and `+0xA4A` on NG/AE. Its callee is OG ID `357079`, NG/AE ID `2194003`, with NG RVA `0x2f30d0` and AE RVA `0x3477c0`.
-- On OG, `EquipObject` calls `UseObject` at `+0x15A`. On NG/AE, `EquipObject +0xE0` calls `GetDesiredEquipSlot`; the real `UseObject` entry is not a direct callsite. The NG/AE entry hook is intentionally disabled until a real prologue trampoline is verified. `UseObject` is OG ID `301794`, RVA `0xe1d100`, and NG/AE ID `2231408`, with NG RVA `0xc61490` and AE RVA `0xce7460`. It is unnamed in CommonLibF4RD.
+- On OG, `EquipObject` calls `UseObject` at `+0x15A`. On NG/AE, `EquipObject +0xE0` calls `GetDesiredEquipSlot`; the real `UseObject` entry is not a direct callsite. Exact verified NG `1.10.984.0` and AE `1.11.240.0` use the MinHook entry path, while every other runtime remains fail-closed. The NG Address Library ID `2231408` resolves to RVA `0xc61490`, and the AE ID resolves to RVA `0xce7460`. The expected ABI is `bool(ActorEquipManager*, Actor*, const BGSObjectInstance*, ObjectEquipParams*)`; the fourth parameter is kept opaque in the plugin, and the reference `ObjectEquipParams` layout is 0x20 bytes. `UseObject` is OG ID `301794`, RVA `0xe1d100`, and NG/AE ID `2231408`. It is unnamed in CommonLibF4RD. Static RE proof does not constitute live runtime acceptance.
 - `SetInputDeviceLightState` is inside `PlayerCharacter::TogglePipBoyLight`, OG ID `520007`, AE ID `2233201`. The callsite dump identifies an E9 tail-call jump. Its OG callee is ID `157452`, RVA `0x1b2c080`, and is unnamed in CommonLibF4RD.
 
 Address resolution returns `std::nullopt` instead of calling `stl::report_and_fail` when an optional ID cannot be resolved. Optional `REL::Relocation` constructors are avoided because they terminate the process on failure.
+
+Entry hooks use MinHook revision `c3fcafdc10146beb5919319d0683e44e3c30d537`. Initialization, creation, enablement, and partial cleanup errors fail closed; no shutdown path is needed during the plugin process lifetime.
 
 ## Game Wrappers
 
@@ -97,7 +99,7 @@ The original acquired-event path rejected null pointers but continued executing.
 
 Playing the equip animation tears down the Pip-Boy, so it is used only when the menu can be reopened. The original flashlight path fired unconditionally, including while the player had no 3D during loading or at the main menu.
 
-The fourth `UseObject` parameter is private and not exposed by CommonLibF4RD. The hook keeps it as an opaque pointer to preserve the ABI without depending on the fork-specific `ObjectEquipParams` type.
+The fourth `UseObject` parameter is private and not exposed by CommonLibF4RD. The hook keeps it as an opaque pointer to preserve the ABI without depending on the fork-specific `ObjectEquipParams` type. MinHook owns the entry relocation and supplies the original trampoline; CommonLibF4RD `write_branch<5>` is not used at this function entry.
 
 The per-frame driver is required because all timed follow-ups depend on it. If it cannot be installed, the plugin remains inactive. The activation hook requires the blocked-reference test; otherwise it could animate references the game refuses to activate.
 
