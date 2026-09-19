@@ -22,8 +22,8 @@ Direct function metadata:
 
 - `PlayAction`: `Actor::PerformAction(BGSAction*, TESObjectREFR*)`.
 - `ApplyMaterialSwap`: `ApplySwap(NiAVObject*, BGSMaterialSwap const*, float, float, void*)`. ID `2189271` has the matching 123-byte implementation shape on NG at RVA `0x201670` and AE at RVA `0x256060`, matching OG RVA `0x531B0`.
-- `IsActivationBlocked`: `TESObjectREFR::IsActivationBlocked(TESObjectREFR*)`.
-- `WornHasKeyword`: `TESObjectREFR::WornHasKeyword(TESObjectREFR*, BGSKeyword*)`. This exists in the old in-tree CommonLib fork but not CommonLibF4RD. The AE ID came from commonlib_NonVR PR #88 on 2026-09-17, which identifies AE `2200995` at RVA `0x507940` on 1.11.240 using Ghidra and Address Library evidence. This is static proof only; no live runtime result was claimed and the pre-merge runtime probe was not run. Verify the RVA against a real AE session before relying on it. It is inert on OG.
+- `IsActivationBlocked`: `TESObjectREFR::IsActivationBlocked(TESObjectREFR*)`. Its native binding is enabled only on exact runtimes `1.10.163.0`, `1.10.984.0`, and `1.11.240.0`.
+- `WornHasKeyword`: `TESObjectREFR::WornHasKeyword(TESObjectREFR*, BGSKeyword*)`. This exists in the old in-tree CommonLib fork but not CommonLibF4RD. Its native binding is enabled only on exact runtimes `1.10.163.0`, `1.10.984.0`, and `1.11.240.0`. The AE ID came from commonlib_NonVR PR #88 on 2026-09-17, which identifies AE `2200995` at RVA `0x507940` on 1.11.240 using Ghidra and Address Library evidence. This is static proof only; no live runtime result was claimed and the pre-merge runtime probe was not run. Verify the RVA against a real AE session before relying on it.
 - `PlayPipboyOpenAnim`: `PipboyManager::PlayPipboyOpenAnim(PipboyManager*, const BSFixedString&)`. This exists in the old in-tree CommonLib fork but not CommonLibF4RD.
 
 For hook sites, `owner` is the function containing the replaced call and offsets are relative to that function. Runtime slots are explicit; an unverified family remains `UNKNOWN_ID` or `UNKNOWN_OFFSET`.
@@ -55,7 +55,7 @@ Address resolution returns `std::nullopt` instead of calling `stl::report_and_fa
 
 All wrappers are optional. If an address cannot be resolved on the running runtime, the wrapper is inert and its matching `Can*()` query reports that state instead of allowing `REL::Relocation` construction to terminate the process.
 
-`PlayAction` has the signature `PlayAction(Actor*, BGSAction*, TESObjectREFR*, void*, uint32_t)` at the engine boundary.
+The `PlayAction` wrapper calls `Actor::PerformAction(BGSAction*, TESObjectREFR*)`; the actor is the implicit `this` argument.
 
 Clip timing walks raw Havok structures by byte offset. Runtime-aware addresses do not make class layouts portable; CommonLibF4RD's `structureIndependence` caveat still applies. The active-node member is an `hkArray<hkbNodeInfo*>*`; each entry is followed to its node clone, filtered by the resolved `hkbClipGenerator` vtable, and then read through the verified `hkbNode` fields. Offsets are trusted only on exact verified runtimes `1.10.163.0`, `1.10.984.0`, and `1.11.240.0`. On other versions, `ReadCurrentClip()` fails and the caller uses a fixed delay instead of dereferencing guesses.
 

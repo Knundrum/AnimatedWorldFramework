@@ -118,8 +118,18 @@ namespace AW::Game
 	{
 		Bind(g_playAction, "PlayAction"sv, Addresses::PlayAction);
 		Bind(g_applySwap, "ApplyMaterialSwap"sv, Addresses::ApplyMaterialSwap);
-		Bind(g_isActivationBlocked, "IsActivationBlocked"sv, Addresses::IsActivationBlocked);
-		Bind(g_wornHasKeyword, "WornHasKeyword"sv, Addresses::WornHasKeyword);
+		if (Addresses::IsVerifiedRuntime()) {
+			Bind(g_isActivationBlocked, "IsActivationBlocked"sv, Addresses::IsActivationBlocked);
+			Bind(g_wornHasKeyword, "WornHasKeyword"sv, Addresses::WornHasKeyword);
+		} else {
+			static bool reported = false;
+			if (!reported) {
+				reported = true;
+				logger::warn(
+					"native TESObjectREFR helper bindings skipped on unverified runtime {}",
+					REL::Module::get().version().string());
+			}
+		}
 		Bind(g_playPipboyOpenAnim, "PlayPipboyOpenAnim"sv, Addresses::PlayPipboyOpenAnim);
 		logger::debug(
 			"game bindings playAction={} materialSwap={} activationBlocked={} wornKeyword={} pipboyAnim={}",

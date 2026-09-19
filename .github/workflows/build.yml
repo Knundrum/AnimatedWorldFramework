@@ -6,7 +6,7 @@ on:
 
 jobs:
   windows-release:
-    runs-on: windows-latest
+    runs-on: windows-2022
 
     steps:
       - name: Check out AnimatedWorld
@@ -22,8 +22,6 @@ jobs:
         shell: pwsh
         run: |
           cmake -S . -B build/ci -G "Visual Studio 17 2022" -A x64 `
-            -DCMAKE_TOOLCHAIN_FILE="$env:VCPKG_ROOT/scripts/buildsystems/vcpkg.cmake" `
-            -DVCPKG_TARGET_TRIPLET=x64-windows-static-md `
             -DCOMMONLIBF4RD_PATH="$pwd/external/CommonLibF4RD"
 
       - name: Build
